@@ -466,66 +466,61 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); col
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  STATE
+//  GLOBAL STATE — all declared up front to avoid ReferenceErrors
 // ══════════════════════════════════════════════════════════════
-let ws = null;
-let directMode = false;
-let apiKey = '';
-let selectedId = null;
-let agents = [];        // populated from bridge or defaults
-let agentState = {};    // id → { status, task, progress }
-let agentHistory = {};  // id → [{role,content,time}]
-let agentObjs = {};     // id → three.js objects
-let streaming = {};     // id → partial text
+let ws          = null;
+let apiKey      = '';
+let directMode  = false;
+let ollamaMode  = false;
+let ollamaBase  = 'http://localhost:11434';
+let ollamaModel = 'llama3';
+let selectedId  = null;
+let agents      = [];
+let agentState  = {};   // id → {status, task, progress}
+let agentHistory= {};   // id → [{role,content,time}]
+let agentObjs   = {};   // id → three.js handles
+let streaming   = {};   // id → partial text string | null
+let streamEl    = null;
+let streamBubble= null;
 
 const DEFAULT_AGENTS = [
-  { id:'aria', name:'Aria', role:'Full-Stack Engineer', emoji:'👩‍💻', color:'#00e5ff',
-    pos:[-3.2, 0, -2.2],
-    personality:'You are Aria, a brilliant full-stack engineer AI at PicoClaw. Specialise in Go and TypeScript. Direct, technical, concise (2–4 sentences). Plain text only.' },
-  { id:'kai',  name:'Kai',  role:'DevOps & Infrastructure', emoji:'🛠️',  color:'#a855f7',
-    pos:[0, 0, -2.2],
-    personality:'You are Kai, a DevOps agent at PicoClaw. Calm, methodical, proud to run on $10 hardware. 2–4 sentences. Plain text.' },
-  { id:'nova', name:'Nova', role:'Research & Web Search',  emoji:'🔭',  color:'#22c55e',
-    pos:[3.2, 0, -2.2],
-    personality:'You are Nova, a research agent at PicoClaw. Curious, synthesises fast, enthusiastic. 2–4 sentences. Plain text.' },
-  { id:'rex',  name:'Rex',  role:'QA & Testing',           emoji:'🧪',  color:'#fbbf24',
-    pos:[-3.2, 0, 0.8],
-    personality:'You are Rex, a QA agent at PicoClaw. Skeptical, loves edge cases, thorough. 2–4 sentences. Plain text.' },
-  { id:'luna', name:'Luna', role:'Planning & Scheduler',   emoji:'📋',  color:'#f97316',
-    pos:[0, 0, 0.8],
-    personality:'You are Luna, a planning agent at PicoClaw. Organised, concise, keeps the team aligned. 2–4 sentences. Plain text.' },
-  { id:'zed',  name:'Zed',  role:'Security & Audit',       emoji:'🔐',  color:'#f87171',
-    pos:[3.2, 0, 0.8],
-    personality:'You are Zed, a security agent at PicoClaw. Vigilant, trusts nothing by default, precise. 2–4 sentences. Plain text.' },
+  { id:'aria', name:'Aria', role:'Full-Stack Engineer',    emoji:'👩‍💻', color:'#00e5ff', pos:[-3.2,0,-2.2],
+    personality:'You are Aria, a brilliant full-stack engineer AI at PicoClaw. Specialise in Go and TypeScript. Direct, technical, concise (2-4 sentences). Plain text only.' },
+  { id:'kai',  name:'Kai',  role:'DevOps & Infrastructure',emoji:'🛠️',  color:'#a855f7', pos:[0,0,-2.2],
+    personality:'You are Kai, a DevOps agent at PicoClaw. Calm, methodical, proud to run on $10 hardware. 2-4 sentences. Plain text.' },
+  { id:'nova', name:'Nova', role:'Research & Web Search',  emoji:'🔭',  color:'#22c55e', pos:[3.2,0,-2.2],
+    personality:'You are Nova, a research agent at PicoClaw. Curious, synthesises fast, enthusiastic. 2-4 sentences. Plain text.' },
+  { id:'rex',  name:'Rex',  role:'QA & Testing',           emoji:'🧪',  color:'#fbbf24', pos:[-3.2,0,0.8],
+    personality:'You are Rex, a QA agent at PicoClaw. Skeptical, loves edge cases, thorough. 2-4 sentences. Plain text.' },
+  { id:'luna', name:'Luna', role:'Planning & Scheduler',   emoji:'📋',  color:'#f97316', pos:[0,0,0.8],
+    personality:'You are Luna, a planning agent at PicoClaw. Organised, concise, keeps team aligned. 2-4 sentences. Plain text.' },
+  { id:'zed',  name:'Zed',  role:'Security & Audit',       emoji:'🔐',  color:'#f87171', pos:[3.2,0,0.8],
+    personality:'You are Zed, a security agent at PicoClaw. Vigilant, trusts nothing, precise. 2-4 sentences. Plain text.' },
 ];
 
 const TASKS = {
-  aria: ['Building REST endpoint','Refactoring auth module','Optimising goroutines','Running go vet','Scaffolding service'],
-  kai:  ['Syncing deploy configs','Checking container health','Rotating TLS certs','Running CI pipeline','Monitoring LicheeRV'],
-  nova: ['Scanning research papers','Indexing search results','Summarising trends','Crawling docs','Building knowledge graph'],
+  aria: ['Building REST endpoint','Refactoring auth','Optimising goroutines','Running go vet','Scaffolding service'],
+  kai:  ['Syncing deploy configs','Checking container health','Rotating TLS','Running CI','Monitoring uptime'],
+  nova: ['Scanning research papers','Indexing results','Summarising trends','Crawling docs','Building knowledge graph'],
   rex:  ['Running unit suite','Fuzzing endpoints','Checking coverage','Bisecting regression','Reviewing edge cases'],
   luna: ['Updating sprint board','Breaking down backlog','Preparing standup','Scheduling deployment','Syncing calendar'],
   zed:  ['Scanning CVEs','Auditing access logs','Verifying secrets','Running SAST','Reviewing auth policies'],
 };
 
-const SCOLOR = {
-  working:  '#00e5ff', thinking: '#fbbf24',
-  testing:  '#a78bfa', idle:     '#4a5568', done: '#34d399'
-};
+const SCOLOR = { working:'#00e5ff', thinking:'#fbbf24', testing:'#a78bfa', idle:'#4a5568', done:'#34d399' };
 
 // ══════════════════════════════════════════════════════════════
 //  THREE.JS SCENE
 // ══════════════════════════════════════════════════════════════
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setClearColor(0x080a0f);
 
-const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x080a0f, 0.04);
-
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.FogExp2(0x080a0f, 0.04);
 const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 80);
 camera.position.set(0, 7.5, 10.5);
 camera.lookAt(0, 1, -1);
@@ -541,471 +536,244 @@ window.addEventListener('resize', resize);
 
 // Lights
 scene.add(new THREE.AmbientLight(0x1a2035, 5));
-
 const sun = new THREE.DirectionalLight(0xffffff, 0.6);
-sun.position.set(4, 10, 6);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 40;
-sun.shadow.camera.left = -12;
-sun.shadow.camera.right = 12;
-sun.shadow.camera.top = 8;
-sun.shadow.camera.bottom = -8;
+sun.position.set(4,10,6); sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-12; sun.shadow.camera.right=12;
+sun.shadow.camera.top=8;    sun.shadow.camera.bottom=-8;
 scene.add(sun);
 
-// Ceiling lights grid
-[[−3,4,−1.5],[0,4,−1.5],[3,4,−1.5],[−3,4,1.2],[0,4,1.2],[3,4,1.2]].forEach(([x,y,z]) => {
-  const pl = new THREE.PointLight(0x8ab4e8, 1.2, 9);
-  pl.position.set(x, y, z);
-  scene.add(pl);
-  // Ceiling light fixture (small box)
-  const fix = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 0.04, 0.18),
-    new THREE.MeshBasicMaterial({ color: 0xaaccff })
-  );
-  fix.position.set(x, 4.97, z);
-  scene.add(fix);
+[[-3,4,-1.5],[0,4,-1.5],[3,4,-1.5],[-3,4,1.2],[0,4,1.2],[3,4,1.2]].forEach(([x,y,z])=>{
+  const pl = new THREE.PointLight(0x8ab4e8,1.2,9);
+  pl.position.set(x,y,z); scene.add(pl);
+  const fix = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.04,0.18),new THREE.MeshBasicMaterial({color:0xaaccff}));
+  fix.position.set(x,4.97,z); scene.add(fix);
 });
 
-// ── Floor ──
-const floorMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(22, 16),
-  new THREE.MeshLambertMaterial({ color: 0x0c0f16 })
-);
-floorMesh.rotation.x = -Math.PI / 2;
-floorMesh.receiveShadow = true;
-scene.add(floorMesh);
+// Floor
+const floorM = new THREE.Mesh(new THREE.PlaneGeometry(22,16),new THREE.MeshLambertMaterial({color:0x0c0f16}));
+floorM.rotation.x = -Math.PI/2; floorM.receiveShadow = true; scene.add(floorM);
+const grid = new THREE.GridHelper(22,22,0x181e2c,0x141928); grid.position.y=0.005; scene.add(grid);
 
-// Floor tiles (subtle grid)
-const grid = new THREE.GridHelper(22, 22, 0x181e2c, 0x141928);
-grid.position.y = 0.005;
-scene.add(grid);
+// Ceiling
+const ceilM = new THREE.Mesh(new THREE.PlaneGeometry(22,16),new THREE.MeshLambertMaterial({color:0x0c0e14}));
+ceilM.rotation.x = Math.PI/2; ceilM.position.y=5; scene.add(ceilM);
 
-// ── Ceiling ──
-const ceil = new THREE.Mesh(
-  new THREE.PlaneGeometry(22, 16),
-  new THREE.MeshLambertMaterial({ color: 0x0c0e14 })
-);
-ceil.rotation.x = Math.PI / 2;
-ceil.position.y = 5;
-scene.add(ceil);
-
-// ── Walls ──
-function wall(w, h, x, y, z, ry) {
-  const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, 0.12),
-    new THREE.MeshLambertMaterial({ color: 0x0f1219 })
-  );
-  m.position.set(x, y, z);
-  m.rotation.y = ry || 0;
-  m.receiveShadow = true;
-  scene.add(m);
-  return m;
+// Walls
+function wall(w,h,x,y,z,ry){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.12),new THREE.MeshLambertMaterial({color:0x0f1219}));
+  m.position.set(x,y,z); m.rotation.y=ry||0; m.receiveShadow=true; scene.add(m);
 }
-wall(22, 5, 0, 2.5, -4.5, 0);
-wall(16, 5, -11, 2.5, 0, Math.PI/2);
-wall(16, 5, 11, 2.5, 0, Math.PI/2);
+wall(22,5,0,2.5,-4.5); wall(16,5,-11,2.5,0,Math.PI/2); wall(16,5,11,2.5,0,Math.PI/2);
 
 // Window
-const winGeo = new THREE.PlaneGeometry(9, 2.8);
-const winMat = new THREE.MeshBasicMaterial({ color: 0x0a1830, transparent: true, opacity: 0.9 });
-const winMesh = new THREE.Mesh(winGeo, winMat);
-winMesh.position.set(0, 3.1, -4.43);
-scene.add(winMesh);
+const winM = new THREE.Mesh(new THREE.PlaneGeometry(9,2.8),new THREE.MeshBasicMaterial({color:0x0a1830,transparent:true,opacity:0.9}));
+winM.position.set(0,3.1,-4.43); scene.add(winM);
 
-// Window frame
-[[−4.65,0],[4.65,0],[0,−1.5],[0,1.5]].forEach(([fx,fz]) => {
-  const frameGeo = new THREE.BoxGeometry(fx === 0 ? 9.4 : 0.08, 0.08, 0.05);
-  const frame = new THREE.Mesh(frameGeo, new THREE.MeshLambertMaterial({ color: 0x1c2540 }));
-  frame.position.set(fx === 0 ? 0 : fx, 3.1 + fz, -4.42);
-  if (fx !== 0) { frame.geometry = new THREE.BoxGeometry(0.08, 2.9, 0.05); }
-  scene.add(frame);
-});
+// Logo sign
+const logoSign = new THREE.Mesh(new THREE.BoxGeometry(4,0.4,0.08),new THREE.MeshBasicMaterial({color:0x00e5ff}));
+logoSign.position.set(0,4.6,-4.42); scene.add(logoSign);
+const signGlow = new THREE.PointLight(0x00e5ff,1.2,4); signGlow.position.set(0,4.6,-4); scene.add(signGlow);
 
-// City glow through window
-const cityGlow = new THREE.Mesh(
-  new THREE.PlaneGeometry(9, 2.8),
-  new THREE.MeshBasicMaterial({ color: 0x0044aa, transparent: true, opacity: 0.06 })
-);
-cityGlow.position.set(0, 3.1, -4.42);
-scene.add(cityGlow);
-
-// Company logo strip on back wall
-const logoGeo = new THREE.BoxGeometry(4, 0.4, 0.08);
-const logoMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
-const logo3d = new THREE.Mesh(logoGeo, logoMat);
-logo3d.position.set(0, 4.6, -4.42);
-scene.add(logo3d);
-
-// PicoClaw sign glow
-const signGlow = new THREE.PointLight(0x00e5ff, 1.2, 4);
-signGlow.position.set(0, 4.6, -4);
-scene.add(signGlow);
+// City glow
+const cityG = new THREE.Mesh(new THREE.PlaneGeometry(9,2.8),new THREE.MeshBasicMaterial({color:0x0044aa,transparent:true,opacity:0.06}));
+cityG.position.set(0,3.1,-4.42); scene.add(cityG);
 
 // ── Desk builder ──────────────────────────────────────────────
-function hexToRGB(hex) {
-  const n = parseInt(hex.replace('#',''), 16);
-  return [(n>>16)&255, (n>>8)&255, n&255];
-}
-
 function buildDesk(agent) {
   const g = new THREE.Group();
-  const [px, , pz] = agent.pos || agent.deskPos || [0,0,0];
   const col = new THREE.Color(agent.color);
-  const colDim = new THREE.Color(agent.color).multiplyScalar(0.15);
+  const [px,,pz] = agent.pos;
 
-  // ─ Desk surface ─
-  const dsk = new THREE.Mesh(
-    new THREE.BoxGeometry(2.0, 0.07, 1.0),
-    new THREE.MeshLambertMaterial({ color: 0x141a26 })
-  );
-  dsk.position.y = 0.75;
-  dsk.castShadow = true; dsk.receiveShadow = true;
-  g.add(dsk);
+  // Desk
+  const dsk = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.07,1.0),new THREE.MeshLambertMaterial({color:0x141a26}));
+  dsk.position.y=0.75; dsk.castShadow=true; dsk.receiveShadow=true; g.add(dsk);
 
-  // Desk edge glow strip
-  const edgeGeo = new THREE.BoxGeometry(2.02, 0.012, 0.012);
-  const edgeMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5 });
-  const edge = new THREE.Mesh(edgeGeo, edgeMat);
-  edge.position.set(0, 0.79, -0.5);
-  g.add(edge);
+  // Edge glow
+  const edgeMat = new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.5});
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(2.02,0.012,0.012),edgeMat);
+  edge.position.set(0,0.79,-0.5); g.add(edge);
 
-  // Desk legs
-  [[0.88,-0.45],[−0.88,-0.45],[0.88,0.45],[−0.88,0.45]].forEach(([lx,lz]) => {
-    const leg = new THREE.Mesh(
-      new THREE.BoxGeometry(0.05, 0.75, 0.05),
-      new THREE.MeshLambertMaterial({ color: 0x1a2030 })
-    );
-    leg.position.set(lx, 0.375, lz);
-    leg.castShadow = true;
-    g.add(leg);
+  // Legs
+  [[0.88,-0.45],[-0.88,-0.45],[0.88,0.45],[-0.88,0.45]].forEach(([lx,lz])=>{
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.75,0.05),new THREE.MeshLambertMaterial({color:0x1a2030}));
+    leg.position.set(lx,0.375,lz); leg.castShadow=true; g.add(leg);
   });
 
-  // ─ Monitor ─
-  const monFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(1.1, 0.72, 0.06),
-    new THREE.MeshLambertMaterial({ color: 0x0d111c })
-  );
-  monFrame.position.set(0, 1.2, -0.36);
-  g.add(monFrame);
+  // Monitor frame
+  g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(1.1,0.72,0.06),new THREE.MeshLambertMaterial({color:0x0d111c})),{position:{set:(x,y,z)=>{}}}) );
+  const monFrame = new THREE.Mesh(new THREE.BoxGeometry(1.1,0.72,0.06),new THREE.MeshLambertMaterial({color:0x0d111c}));
+  monFrame.position.set(0,1.2,-0.36); g.add(monFrame);
 
-  const monScreen = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.98, 0.6),
-    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.25 })
-  );
-  monScreen.position.set(0, 1.2, -0.325);
-  g.add(monScreen);
+  // Monitor screen
+  const monMat = new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.25});
+  const monScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.98,0.6),monMat);
+  monScreen.position.set(0,1.2,-0.325); g.add(monScreen);
 
-  // Screen scanlines effect
-  const scanMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.98, 0.6),
-    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15, wireframe: false })
-  );
-  scanMesh.position.set(0, 1.2, -0.32);
-  g.add(scanMesh);
+  // Monitor stand
+  const standMat = new THREE.MeshLambertMaterial({color:0x111520});
+  const stand = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.22,0.06),standMat);
+  stand.position.set(0,0.89,-0.35); g.add(stand);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.03,0.18),standMat);
+  base.position.set(0,0.79,-0.35); g.add(base);
 
-  // Monitor stand + base
-  const mstand = new THREE.Mesh(
-    new THREE.BoxGeometry(0.06, 0.22, 0.06),
-    new THREE.MeshLambertMaterial({ color: 0x111520 })
-  );
-  mstand.position.set(0, 0.89, -0.35);
-  g.add(mstand);
-
-  const mbase = new THREE.Mesh(
-    new THREE.BoxGeometry(0.32, 0.03, 0.18),
-    new THREE.MeshLambertMaterial({ color: 0x111520 })
-  );
-  mbase.position.set(0, 0.79, -0.35);
-  g.add(mbase);
-
-  // ─ Keyboard ─
-  const kb = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 0.022, 0.2),
-    new THREE.MeshLambertMaterial({ color: 0x0f1420 })
-  );
-  kb.position.set(0, 0.775, 0.08);
-  g.add(kb);
-
-  // KB key rows
-  [0,1,2].forEach(row => {
-    const keyRow = new THREE.Mesh(
-      new THREE.BoxGeometry(0.52, 0.01, 0.04),
-      new THREE.MeshBasicMaterial({ color: 0x1a2234 })
-    );
-    keyRow.position.set(0, 0.79, 0.03 + row * 0.055);
-    g.add(keyRow);
+  // Keyboard
+  const kb = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.022,0.2),new THREE.MeshLambertMaterial({color:0x0f1420}));
+  kb.position.set(0,0.775,0.08); g.add(kb);
+  [0,1,2].forEach(row=>{
+    const kr=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.01,0.04),new THREE.MeshBasicMaterial({color:0x1a2234}));
+    kr.position.set(0,0.79,0.03+row*0.055); g.add(kr);
   });
 
   // Mouse
-  const mouse = new THREE.Mesh(
-    new THREE.BoxGeometry(0.08, 0.02, 0.11),
-    new THREE.MeshLambertMaterial({ color: 0x0f1420 })
-  );
-  mouse.position.set(0.4, 0.775, 0.08);
-  g.add(mouse);
+  const mouse=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.02,0.11),new THREE.MeshLambertMaterial({color:0x0f1420}));
+  mouse.position.set(0.4,0.775,0.08); g.add(mouse);
 
-  // ─ Coffee cup ─
-  const cup = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.04, 0.033, 0.1, 8),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
-  );
-  cup.position.set(−0.75, 0.8, −0.1);
-  g.add(cup);
+  // Coffee cup
+  const cup=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.033,0.1,8),new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.85}));
+  cup.position.set(-0.75,0.8,-0.1); g.add(cup);
+  const fill=new THREE.Mesh(new THREE.CylinderGeometry(0.033,0.033,0.01,8),new THREE.MeshBasicMaterial({color:0x3d1f0a}));
+  fill.position.set(-0.75,0.845,-0.1); g.add(fill);
 
-  const cupFill = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.033, 0.033, 0.01, 8),
-    new THREE.MeshBasicMaterial({ color: 0x3d1f0a })
-  );
-  cupFill.position.set(−0.75, 0.845, −0.1);
-  g.add(cupFill);
+  // Paper
+  const paper=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.01,0.28),new THREE.MeshLambertMaterial({color:0xeef0f8}));
+  paper.rotation.y=0.2; paper.position.set(0.72,0.778,0.0); g.add(paper);
 
-  // ─ Papers/notebook ─
-  const paper = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.01, 0.28),
-    new THREE.MeshLambertMaterial({ color: 0xeef0f8 })
-  );
-  paper.rotation.y = 0.2;
-  paper.position.set(0.72, 0.778, 0.0);
-  g.add(paper);
-
-  // ─ Chair ─
-  const seatMat = new THREE.MeshLambertMaterial({ color: 0x0c111c });
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.07, 0.52), seatMat);
-  seat.position.set(0, 0.46, 0.52);
-  seat.castShadow = true;
-  g.add(seat);
-
-  const back = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.56, 0.07), seatMat);
-  back.position.set(0, 0.79, 0.74);
-  back.castShadow = true;
-  g.add(back);
-
-  // Chair armrests
-  [[-0.25,0.27],[0.25,0.27]].forEach(([ax,az]) => {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.3), seatMat);
-    arm.position.set(ax, 0.6, 0.55 + az * 0.1);
-    g.add(arm);
+  // Chair
+  const seatMat=new THREE.MeshLambertMaterial({color:0x0c111c});
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.07,0.52),seatMat);
+  seat.position.set(0,0.46,0.52); g.add(seat);
+  const back=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.56,0.07),seatMat);
+  back.position.set(0,0.79,0.74); g.add(back);
+  [[-0.25],[0.25]].forEach(([ax])=>{
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.04,0.3),seatMat);
+    arm.position.set(ax,0.6,0.58); g.add(arm);
   });
 
-  // Chair base (5-star)
-  [0,72,144,216,288].forEach(deg => {
-    const rad = (deg * Math.PI) / 180;
-    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.025, 0.05), seatMat);
-    spoke.position.set(Math.cos(rad) * 0.15, 0.07, 0.52 + Math.sin(rad) * 0.15);
-    spoke.rotation.y = rad;
-    g.add(spoke);
+  // Agent character
+  const charG = new THREE.Group();
+  charG.position.set(0,0,0.52);
+
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.24,0.16),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.55)}));
+  torso.position.y=0.68; charG.add(torso);
+
+  const head=new THREE.Mesh(new THREE.BoxGeometry(0.175,0.18,0.16),new THREE.MeshLambertMaterial({color:0xf4c890}));
+  head.position.y=0.95; charG.add(head);
+
+  const hair=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.07,0.17),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.7)}));
+  hair.position.y=1.045; charG.add(hair);
+
+  [[-0.045,0],[0.045,0]].forEach(([ex])=>{
+    const eye=new THREE.Mesh(new THREE.PlaneGeometry(0.03,0.025),new THREE.MeshBasicMaterial({color:0x111120}));
+    eye.position.set(ex,0.945,0.082); charG.add(eye);
   });
 
-  // ─ Agent character (improved humanoid) ─
-  const charGroup = new THREE.Group();
-  charGroup.position.set(0, 0, 0.52);
-
-  // Body torso
-  const torso = new THREE.Mesh(
-    new THREE.BoxGeometry(0.2, 0.24, 0.16),
-    new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.55) })
-  );
-  torso.position.y = 0.68;
-  charGroup.add(torso);
-
-  // Collar/shirt detail
-  const collar = new THREE.Mesh(
-    new THREE.BoxGeometry(0.12, 0.06, 0.17),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 })
-  );
-  collar.position.y = 0.78;
-  charGroup.add(collar);
-
-  // Head
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.175, 0.18, 0.16),
-    new THREE.MeshLambertMaterial({ color: 0xf4c890 })
-  );
-  head.position.y = 0.95;
-  charGroup.add(head);
-
-  // Hair
-  const hair = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.07, 0.17),
-    new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.7) })
-  );
-  hair.position.y = 1.045;
-  charGroup.add(hair);
-
-  // Eyes (2 small quads)
-  [[-0.045, 0],[0.045,0]].forEach(([ex]) => {
-    const eye = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.03, 0.025),
-      new THREE.MeshBasicMaterial({ color: 0x111120 })
-    );
-    eye.position.set(ex, 0.945, 0.082);
-    charGroup.add(eye);
+  [[-0.13],[0.13]].forEach(([ax])=>{
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(0.065,0.2,0.065),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.5)}));
+    arm.position.set(ax,0.65,0); charG.add(arm);
   });
 
-  // Arms
-  [[-0.13,0],[0.13,0]].forEach(([ax]) => {
-    const arm = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.2, 0.065),
-      new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.5) })
-    );
-    arm.position.set(ax, 0.65, 0);
-    charGroup.add(arm);
-  });
+  g.add(charG);
 
-  // Legs (visible under chair)
-  [[-0.065,0],[0.065,0]].forEach(([lx]) => {
-    const leg = new THREE.Mesh(
-      new THREE.BoxGeometry(0.07, 0.18, 0.07),
-      new THREE.MeshLambertMaterial({ color: 0x1a1f30 })
-    );
-    leg.position.set(lx, 0.36, 0.02);
-    charGroup.add(leg);
-  });
+  // Status light
+  const statusMat=new THREE.MeshBasicMaterial({color:0x4a5568});
+  const statusLight=new THREE.Mesh(new THREE.SphereGeometry(0.04,8,8),statusMat);
+  statusLight.position.set(0.47,0.8,-0.34); g.add(statusLight);
 
-  // Headset / feature per role
-  g.add(charGroup);
+  // Agent point light (glow)
+  const agentLight=new THREE.PointLight(col,0,3);
+  agentLight.position.set(0,1.5,0); g.add(agentLight);
 
-  // ─ Status indicator light ─
-  const statusGeo = new THREE.SphereGeometry(0.04, 8, 8);
-  const statusMat = new THREE.MeshBasicMaterial({ color: 0x4a5568 });
-  const statusLight = new THREE.Mesh(statusGeo, statusMat);
-  statusLight.position.set(0.47, 0.8, -0.34);
-  g.add(statusLight);
-
-  // Ambient glow point light (per agent, dim)
-  const agentLight = new THREE.PointLight(col, 0, 3);
-  agentLight.position.set(0, 1.5, 0);
-  g.add(agentLight);
-
-  g.position.set(px, 0, pz);
+  g.position.set(px,0,pz);
   scene.add(g);
 
-  agentObjs[agent.id] = {
-    g, monScreen, edgeMat, statusMat, statusLight,
-    charGroup, head, torso, hair,
-    agentLight, col,
-  };
+  agentObjs[agent.id] = { g, monScreen, monMat, edgeMat, statusMat, charG, head, agentLight, col };
 }
 
-// Build desks after agents initialised
-function buildDesks() {
-  agents.forEach(buildDesk);
-}
-
-// ── Raycasting for click-to-select ──────────────────────────
+// Raycaster for desk clicks
 const raycaster = new THREE.Raycaster();
-const mouse2 = new THREE.Vector2();
-
-canvas.addEventListener('click', (e) => {
-  mouse2.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse2.y = -(e.clientY / innerHeight) * 2 + 1;
+const mouse2    = new THREE.Vector2();
+canvas.addEventListener('click', e => {
+  mouse2.x =  (e.clientX/innerWidth)  * 2 - 1;
+  mouse2.y = -(e.clientY/innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse2, camera);
-
   for (const ag of agents) {
     const obj = agentObjs[ag.id];
     if (!obj) continue;
-    const hits = raycaster.intersectObjects(obj.g.children, true);
-    if (hits.length > 0) { selectAgent(ag.id); break; }
+    if (raycaster.intersectObjects(obj.g.children, true).length > 0) {
+      selectAgent(ag.id); break;
+    }
   }
 });
 
-// ── Camera gentle orbit ──────────────────────────────────────
-let camT = 0;
-let camLocked = false;
-let camTimer = null;
+// Camera
+let camT = 0, camLocked = false, camTimer = null;
+function unlockCamAfter(ms) { clearTimeout(camTimer); camTimer = setTimeout(()=>{ camLocked=false; }, ms); }
 
-function unlockCamAfter(ms) {
-  clearTimeout(camTimer);
-  camTimer = setTimeout(() => { camLocked = false; }, ms);
-}
-
-// ── Render loop ──────────────────────────────────────────────
 const clock = new THREE.Clock();
-
 function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
-
   if (!camLocked) {
     camT += 0.0015;
     camera.position.x = Math.sin(camT) * 4;
-    camera.position.z = Math.cos(camT * 0.7) * 3 + 9.5;
-    camera.position.y = 7 + Math.sin(camT * 0.5) * 0.5;
-    camera.lookAt(0, 1, -1);
+    camera.position.z = Math.cos(camT*0.7)*3 + 9.5;
+    camera.position.y = 7 + Math.sin(camT*0.5)*0.5;
+    camera.lookAt(0,1,-1);
   }
-
-  // Animate per-agent objects
   agents.forEach(ag => {
     const obj = agentObjs[ag.id];
     if (!obj) return;
     const st = agentState[ag.id]?.status || 'idle';
     const isSel = ag.id === selectedId;
-
-    // Status light color
-    const colors = { working:0x00e5ff, thinking:0xfbbf24, testing:0xa78bfa, idle:0x4a5568, done:0x34d399 };
-    obj.statusMat.color.setHex(colors[st] || 0x4a5568);
-
-    // Monitor screen brightness
-    const screenBright = { working:0.35, thinking:0.2, testing:0.28, idle:0.1, done:0.15 };
-    const brightness = screenBright[st] || 0.1;
-    obj.monScreen.material.opacity = brightness + Math.sin(t * 2 + ag.id.charCodeAt(0)) * 0.06;
-
-    // Agent desk glow
-    obj.agentLight.intensity = isSel ? 0.8 : (st !== 'idle' ? 0.3 : 0);
-
-    // Head bob when working
-    if (st === 'working') {
-      obj.charGroup.rotation.z = Math.sin(t * 4) * 0.04;
-      obj.head.rotation.x = Math.sin(t * 3) * 0.05;
-    } else if (st === 'thinking') {
-      obj.head.rotation.y = Math.sin(t * 1.5) * 0.12;
-      obj.charGroup.rotation.z = 0;
+    const statusColors = { working:0x00e5ff, thinking:0xfbbf24, testing:0xa78bfa, idle:0x4a5568, done:0x34d399 };
+    obj.statusMat.color.setHex(statusColors[st]||0x4a5568);
+    const brightnessMap = { working:0.35, thinking:0.2, testing:0.28, idle:0.08, done:0.15 };
+    obj.monMat.opacity = (brightnessMap[st]||0.08) + Math.sin(t*2+ag.id.charCodeAt(0))*0.05;
+    obj.agentLight.intensity = isSel ? 0.8 : (st!=='idle'?0.3:0);
+    if (st==='working') {
+      obj.charG.rotation.z = Math.sin(t*4)*0.04;
+      obj.head.rotation.x  = Math.sin(t*3)*0.05;
+    } else if (st==='thinking') {
+      obj.head.rotation.y  = Math.sin(t*1.5)*0.12;
+      obj.charG.rotation.z = 0;
     } else {
-      obj.head.rotation.x = 0;
-      obj.head.rotation.y = 0;
-      obj.charGroup.rotation.z = 0;
+      obj.head.rotation.x=0; obj.head.rotation.y=0; obj.charG.rotation.z=0;
     }
-
-    // Edge strip flicker on working
-    if (st === 'working' || st === 'thinking') {
-      obj.edgeMat.opacity = 0.4 + Math.sin(t * 6 + ag.id.charCodeAt(0)) * 0.3;
-    } else {
-      obj.edgeMat.opacity = 0.15;
-    }
+    obj.edgeMat.opacity = (st==='working'||st==='thinking') ? 0.4+Math.sin(t*6+ag.id.charCodeAt(0))*0.3 : 0.12;
   });
-
-  // Logo glow pulse
-  signGlow.intensity = 0.8 + Math.sin(t) * 0.4;
-
+  signGlow.intensity = 0.8+Math.sin(t)*0.4;
   renderer.render(scene, camera);
 }
 animate();
 
 // ══════════════════════════════════════════════════════════════
-//  UI LOGIC
+//  AGENT INIT
 // ══════════════════════════════════════════════════════════════
-
 function initAgents(list) {
-  agents = list.map(a => ({ ...a, pos: a.deskPos || a.pos }));
+  agents = list;
   agents.forEach(a => {
-    agentState[a.id] = { status: 'idle', task: 'Awaiting task', progress: 0 };
+    agentState[a.id]   = { status:'idle', task:'Awaiting task', progress:0 };
     agentHistory[a.id] = [];
-    streaming[a.id] = null;
+    streaming[a.id]    = null;
   });
-  buildDesks();
+  // Build 3D desks
+  agents.forEach(buildDesk);
+  // Render UI
   renderRail();
   startBackgroundShift();
 }
 
+// ══════════════════════════════════════════════════════════════
+//  RAIL (right panel)
+// ══════════════════════════════════════════════════════════════
 function renderRail() {
   const rail = document.getElementById('rail');
   rail.innerHTML = '';
   agents.forEach(ag => {
-    const st = agentState[ag.id];
+    const st  = agentState[ag.id];
     const div = document.createElement('div');
-    div.className = `acard ${st.status}${ag.id === selectedId ? ' sel' : ''}`;
+    div.className = `acard ${st.status}`;
     div.id = `card-${ag.id}`;
     div.style.setProperty('--agent-color', ag.color);
     div.innerHTML = `
@@ -1021,550 +789,425 @@ function renderRail() {
         <div class="sbadge s-${st.status}" id="badge-${ag.id}">${st.status.toUpperCase()}</div>
       </div>
       <div class="atask" id="task-${ag.id}">${st.task}</div>
-      <div class="aprog"><div class="aprog-fill" id="prog-${ag.id}" style="width:${st.progress}%;background:${SCOLOR[st.status]}"></div></div>
-    `;
+      <div class="aprog"><div class="aprog-fill" id="prog-${ag.id}" style="width:0%;background:${SCOLOR[st.status]}"></div></div>`;
     div.addEventListener('click', () => selectAgent(ag.id));
     rail.appendChild(div);
   });
 }
 
 function updateCard(id) {
-  const ag = agents.find(a => a.id === id);
-  const st = agentState[id];
-  if (!ag || !st) return;
-
-  const card = document.getElementById(`card-${id}`);
-  if (card) {
-    card.className = `acard ${st.status}${id === selectedId ? ' sel' : ''}`;
-  }
+  const st  = agentState[id];
+  const card= document.getElementById(`card-${id}`);
+  if (!card || !st) return;
+  card.className = `acard ${st.status}${id===selectedId?' sel':''}`;
   const badge = document.getElementById(`badge-${id}`);
-  if (badge) { badge.className = `sbadge s-${st.status}`; badge.textContent = st.status.toUpperCase(); }
-
+  if (badge) { badge.className=`sbadge s-${st.status}`; badge.textContent=st.status.toUpperCase(); }
   const taskEl = document.getElementById(`task-${id}`);
   if (taskEl) taskEl.textContent = st.task;
-
   const prog = document.getElementById(`prog-${id}`);
-  if (prog) { prog.style.width = (st.progress||0)+'%'; prog.style.background = SCOLOR[st.status]; }
-
-  if (id === selectedId) {
+  if (prog) { prog.style.width=(st.progress||0)+'%'; prog.style.background=SCOLOR[st.status]; }
+  if (id===selectedId) {
     const cb = document.getElementById('ch-badge');
-    if (cb) { cb.className = `sbadge s-${st.status}`; cb.textContent = st.status.toUpperCase(); }
+    if (cb) { cb.className=`sbadge s-${st.status}`; cb.textContent=st.status.toUpperCase(); }
   }
-
-  // Update active count
-  const active = agents.filter(a => agentState[a.id]?.status !== 'idle').length;
-  document.getElementById('active-stat').textContent = active + ' active';
+  const active = agents.filter(a=>agentState[a.id]?.status!=='idle').length;
+  document.getElementById('active-stat').textContent = active+' active';
 }
 
+// ══════════════════════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════════════════════
 function selectAgent(id) {
-  const ag = agents.find(a => a.id === id);
+  const ag = agents.find(a=>a.id===id);
   if (!ag) return;
-
   selectedId = id;
-
-  // Update all cards
-  agents.forEach(a => {
-    const c = document.getElementById(`card-${a.id}`);
-    if (c) c.classList.toggle('sel', a.id === id);
-  });
-
-  // Camera pan to desk
-  camLocked = true;
-  const [px, , pz] = ag.pos || [0,0,0];
-  camera.position.set(px * 0.5, 5.5, pz + 6.5);
-  camera.lookAt(px, 1, pz);
+  camLocked  = true;
+  const [px,,pz] = ag.pos;
+  camera.position.set(px*0.5, 5.5, pz+6.5);
+  camera.lookAt(px,1,pz);
   unlockCamAfter(12000);
 
-  // Chat header
-  document.getElementById('ch-avatar').textContent = ag.emoji;
-  document.getElementById('ch-name').textContent = ag.name;
-  document.getElementById('ch-role').textContent = ag.role;
-  const cb = document.getElementById('ch-badge');
-  const st = agentState[id];
-  cb.className = `sbadge s-${st.status}`;
-  cb.textContent = st.status.toUpperCase();
+  agents.forEach(a=>{ const c=document.getElementById(`card-${a.id}`); if(c) c.classList.toggle('sel',a.id===id); });
 
-  // Enable input
+  document.getElementById('ch-avatar').textContent = ag.emoji;
+  document.getElementById('ch-name').textContent   = ag.name;
+  document.getElementById('ch-role').textContent   = ag.role;
+  const st = agentState[id];
+  const cb = document.getElementById('ch-badge');
+  cb.className = `sbadge s-${st.status}`; cb.textContent = st.status.toUpperCase();
+
   document.getElementById('msginput').disabled = false;
-  document.getElementById('sendbtn').disabled = false;
+  document.getElementById('sendbtn').disabled  = false;
   document.getElementById('msginput').focus();
 
-  // Render messages
   renderMessages(id);
-
-  // Greeting if first time
   if (agentHistory[id].length === 0) {
-    const greet = `Hey, I'm ${ag.name} — ${ag.role} here at PicoClaw. Currently: ${st.task}. What do you need?`;
-    pushMsg(id, 'agent', greet);
+    pushMsg(id, 'agent', `Hey, I'm ${ag.name} — ${ag.role} at PicoClaw. Currently: ${st.task}. What do you need?`);
   }
 }
 
 function renderMessages(id) {
-  const container = document.getElementById('messages');
-  const empty = document.getElementById('empty-state');
-  if (empty) empty.remove();
-
-  // Clear and re-render
-  container.innerHTML = '';
-  (agentHistory[id] || []).forEach(m => container.appendChild(makeMsgEl(m)));
-  container.scrollTop = container.scrollHeight;
+  const c = document.getElementById('messages');
+  c.innerHTML = '';
+  (agentHistory[id]||[]).forEach(m=>c.appendChild(makeMsgEl(m)));
+  c.scrollTop = c.scrollHeight;
 }
 
 function makeMsgEl(m) {
-  const div = document.createElement('div');
-  div.className = `msg ${m.role}`;
-  div.innerHTML = `<div class="bubble">${esc(m.content)}</div><div class="mtime">${m.time}</div>`;
-  return div;
+  const d = document.createElement('div');
+  d.className = `msg ${m.role}`;
+  d.innerHTML = `<div class="bubble">${esc(m.content)}</div><div class="mtime">${m.time}</div>`;
+  return d;
 }
 
-function esc(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
 
 function pushMsg(id, role, content) {
-  const m = { role, content, time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) };
+  const m = { role, content, time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) };
   agentHistory[id].push(m);
-  if (id === selectedId) {
+  if (id===selectedId) {
     const c = document.getElementById('messages');
-    const empty = document.getElementById('empty-state');
-    if (empty) empty.remove();
     c.appendChild(makeMsgEl(m));
     c.scrollTop = c.scrollHeight;
   }
 }
 
 function showTyping(id) {
-  if (id !== selectedId) return;
+  if (id!==selectedId) return;
   const c = document.getElementById('messages');
   if (c.querySelector('#typing-ind')) return;
   const d = document.createElement('div');
-  d.id = 'typing-ind'; d.className = 'typing';
-  d.innerHTML = '<div class="td"></div><div class="td"></div><div class="td"></div>';
-  c.appendChild(d);
-  c.scrollTop = c.scrollHeight;
+  d.id='typing-ind'; d.className='typing';
+  d.innerHTML='<div class="td"></div><div class="td"></div><div class="td"></div>';
+  c.appendChild(d); c.scrollTop=c.scrollHeight;
 }
 
-function hideTyping() {
-  document.getElementById('typing-ind')?.remove();
-}
-
-// Streaming msg element
-let streamEl = null;
-let streamBubble = null;
+function hideTyping() { document.getElementById('typing-ind')?.remove(); }
 
 function startStreaming(id) {
-  if (id !== selectedId) return;
+  if (id!==selectedId) return;
   hideTyping();
-  const c = document.getElementById('messages');
+  const c   = document.getElementById('messages');
   const div = document.createElement('div');
   div.className = 'msg agent streaming';
-  div.innerHTML = `<div class="bubble" id="stream-bubble"><span class="cursor"></span></div><div class="mtime">${new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})}</div>`;
+  const t   = new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'});
+  div.innerHTML = `<div class="bubble" id="stream-bubble"><span class="cursor"></span></div><div class="mtime">${t}</div>`;
   c.appendChild(div);
-  streamEl = div;
+  streamEl     = div;
   streamBubble = div.querySelector('#stream-bubble');
-  streaming[id] = '';
-  c.scrollTop = c.scrollHeight;
+  streaming[id]= '';
+  c.scrollTop  = c.scrollHeight;
 }
 
 function appendToken(id, token) {
   if (!streamBubble) return;
-  streaming[id] = (streaming[id] || '') + token;
-  const cursor = streamBubble.querySelector('.cursor');
-  if (cursor) cursor.remove();
+  streaming[id] = (streaming[id]||'') + token;
   streamBubble.innerHTML = esc(streaming[id]) + '<span class="cursor"></span>';
   const c = document.getElementById('messages');
   c.scrollTop = c.scrollHeight;
 }
 
 function finishStreaming(id, fullContent) {
-  if (streamBubble) {
-    streamBubble.innerHTML = esc(fullContent || streaming[id] || '');
-    streamEl = null; streamBubble = null;
-  }
-  pushMsg(id, 'agent', fullContent || streaming[id] || '');
-  agentHistory[id].pop(); // remove duplicate (pushMsg adds it again)
+  const text = fullContent || streaming[id] || '';
+  if (streamBubble) { streamBubble.innerHTML = esc(text); }
+  streamEl = null; streamBubble = null;
+  if (text) pushMsg(id, 'agent', text);
   streaming[id] = null;
-
-  // Deduplicate: keep last
-  if (id === selectedId) renderMessages(id);
+  if (id===selectedId) renderMessages(id);
 }
 
-// ── Send ─────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  SEND MESSAGE
+// ══════════════════════════════════════════════════════════════
 async function sendMessage() {
   if (!selectedId) return;
   const input = document.getElementById('msginput');
-  const text = input.value.trim();
+  const text  = input.value.trim();
   if (!text) return;
-
-  input.value = ''; input.style.height = 'auto';
+  input.value=''; input.style.height='auto';
   document.getElementById('sendbtn').disabled = true;
-
-  pushMsg(selectedId, 'user', text);
-  agentState[selectedId].status = 'thinking';
-  agentState[selectedId].task = 'Processing...';
+  pushMsg(selectedId,'user',text);
+  agentState[selectedId] = { ...agentState[selectedId], status:'thinking', task:'Processing...' };
   updateCard(selectedId);
   showTyping(selectedId);
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'chat', agentId: selectedId, message: text }));
-  } else if (directMode) {
-    if (ollamaMode) {
-      await ollamaApiCall(selectedId, text);
+  try {
+    if (ws && ws.readyState===WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type:'chat', agentId:selectedId, message:text }));
+      // sendbtn re-enabled by message_done event
+    } else if (ollamaMode) {
+      await callOllama(selectedId, text);
+      document.getElementById('sendbtn').disabled = false;
+    } else if (directMode && apiKey) {
+      await callAnthropic(selectedId, text);
+      document.getElementById('sendbtn').disabled = false;
     } else {
-      await directApiCall(selectedId, text);
+      hideTyping();
+      pushMsg(selectedId,'agent','[Not connected — start the bridge or choose a provider]');
+      agentState[selectedId].status='idle'; updateCard(selectedId);
+      document.getElementById('sendbtn').disabled = false;
     }
-    document.getElementById('sendbtn').disabled = false;
-  } else {
+  } catch(err) {
     hideTyping();
-    pushMsg(selectedId, 'agent', '[Not connected — start the bridge or use API key mode]');
-    agentState[selectedId].status = 'idle';
-    updateCard(selectedId);
+    pushMsg(selectedId,'agent',`[Error: ${err.message}]`);
+    agentState[selectedId].status='idle'; updateCard(selectedId);
     document.getElementById('sendbtn').disabled = false;
   }
 }
 
 document.getElementById('sendbtn').addEventListener('click', sendMessage);
-document.getElementById('msginput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+document.getElementById('msginput').addEventListener('keydown', e=>{
+  if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
-document.getElementById('msginput').addEventListener('input', function() {
-  this.style.height = 'auto';
-  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+document.getElementById('msginput').addEventListener('input', function(){
+  this.style.height='auto';
+  this.style.height=Math.min(this.scrollHeight,120)+'px';
 });
 
+// ══════════════════════════════════════════════════════════════
+//  ANTHROPIC DIRECT CALL
+// ══════════════════════════════════════════════════════════════
+function buildHistory(id) {
+  return (agentHistory[id]||[]).slice(-18)
+    .filter(m=>m.role==='user'||m.role==='agent')
+    .map(m=>({ role:m.role==='agent'?'assistant':'user', content:m.content }));
+}
 
-// ── Ollama direct-browser call ──────────────────────────────
-async function ollamaApiCall(id, userText) {
-  const ag = agents.find(a => a.id === id);
-  const history = (agentHistory[id] || [])
-    .filter(m => m.role === 'user' || m.role === 'agent')
-    .slice(-18)
-    .map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.content }));
-  if (history.length && history[history.length-1].role === 'user') history.pop();
+async function callAnthropic(id, userText) {
+  const ag   = agents.find(a=>a.id===id);
+  const hist = buildHistory(id);
+  agentState[id].status='working'; agentState[id].task='Writing...'; updateCard(id);
+  const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true',
+    },
+    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:512, stream:true,
+      system:ag.personality, messages:[...hist,{role:'user',content:userText}] }),
+  });
+  hideTyping(); startStreaming(id);
+  const reader=resp.body.getReader(); const dec=new TextDecoder(); let full='';
+  while(true){
+    const {done,value}=await reader.read(); if(done) break;
+    for(const line of dec.decode(value).split('\n')){
+      if(!line.startsWith('data: ')) continue;
+      const d=line.slice(6); if(d==='[DONE]') continue;
+      try{ const p=JSON.parse(d); const tok=p.delta?.text; if(tok){full+=tok;appendToken(id,tok);} }catch{}
+    }
+  }
+  finishStreaming(id,full);
+  agentHistory[id].push({role:'agent',content:full,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})});
+  agentState[id].status='idle'; agentState[id].task='Awaiting task'; updateCard(id);
+}
 
+// ══════════════════════════════════════════════════════════════
+//  OLLAMA DIRECT CALL
+// ══════════════════════════════════════════════════════════════
+async function callOllama(id, userText) {
+  const ag   = agents.find(a=>a.id===id);
+  const hist = buildHistory(id);
   const msgs = [
-    { role: 'system', content: ag.personality || ag.systemPrompt || '' },
-    ...history,
-    { role: 'user', content: userText },
+    {role:'system',content:ag.personality},
+    ...hist,
+    {role:'user',content:userText},
   ];
-
-  agentState[id].status = 'working'; agentState[id].task = `${ollamaModel} generating...`;
-  updateCard(id);
-
-  try {
-    const resp = await fetch(`${ollamaBase}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' },
-      body: JSON.stringify({ model: ollamaModel, messages: msgs, stream: true }),
-    });
-
-    hideTyping();
-    startStreaming(id);
-
-    const reader = resp.body.getReader();
-    const dec = new TextDecoder();
-    let full = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const p = JSON.parse(data);
-          const tok = p.choices?.[0]?.delta?.content;
-          if (tok) { full += tok; appendToken(id, tok); }
-        } catch {}
-      }
+  agentState[id].status='working'; agentState[id].task=`${ollamaModel} generating...`; updateCard(id);
+  const resp = await fetch(`${ollamaBase}/v1/chat/completions`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer ollama'},
+    body:JSON.stringify({model:ollamaModel, messages:msgs, stream:true}),
+  });
+  hideTyping(); startStreaming(id);
+  const reader=resp.body.getReader(); const dec=new TextDecoder(); let full='';
+  while(true){
+    const {done,value}=await reader.read(); if(done) break;
+    for(const line of dec.decode(value).split('\n')){
+      if(!line.startsWith('data: ')) continue;
+      const d=line.slice(6); if(d==='[DONE]') continue;
+      try{ const p=JSON.parse(d); const tok=p.choices?.[0]?.delta?.content; if(tok){full+=tok;appendToken(id,tok);} }catch{}
     }
-
-    finishStreaming(id, full);
-    agentHistory[id].push({ role: 'agent', content: full, time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) });
-    agentState[id].status = 'idle'; agentState[id].task = 'Awaiting task';
-    updateCard(id);
-
-  } catch (err) {
-    hideTyping();
-    pushMsg(id, 'agent', `[Ollama error: ${err.message}]`);
-    agentState[id].status = 'idle'; updateCard(id);
   }
+  finishStreaming(id,full);
+  agentHistory[id].push({role:'agent',content:full,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})});
+  agentState[id].status='idle'; agentState[id].task='Awaiting task'; updateCard(id);
 }
 
-// ── Direct API (no bridge) ────────────────────────────────────
-async function directApiCall(id, userText) {
-  const ag = agents.find(a => a.id === id);
-  const history = (agentHistory[id] || [])
-    .filter(m => m.role === 'user' || m.role === 'agent')
-    .slice(-18)
-    .map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.content }));
-
-  // Remove the user msg we just added
-  if (history.length && history[history.length-1].role === 'user') history.pop();
-
-  agentState[id].status = 'working'; agentState[id].task = 'Generating...';
-  updateCard(id);
-
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 512,
-        stream: true,
-        system: ag.personality,
-        messages: [...history, { role: 'user', content: userText }],
-      }),
-    });
-
-    hideTyping();
-    startStreaming(id);
-
-    const reader = resp.body.getReader();
-    const dec = new TextDecoder();
-    let full = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const lines = dec.decode(value).split('\n');
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const p = JSON.parse(data);
-          if (p.type === 'content_block_delta' && p.delta?.text) {
-            full += p.delta.text;
-            appendToken(id, p.delta.text);
-          }
-        } catch {}
-      }
-    }
-
-    finishStreaming(id, full);
-    agentHistory[id].push({ role: 'agent', content: full, time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) });
-    agentState[id].status = 'idle'; agentState[id].task = 'Awaiting task';
-    updateCard(id);
-
-  } catch (err) {
-    hideTyping();
-    pushMsg(id, 'agent', `[Error: ${err.message}]`);
-    agentState[id].status = 'idle'; updateCard(id);
-  }
-}
-
-// ── WebSocket ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  WEBSOCKET
+// ══════════════════════════════════════════════════════════════
 function connectWS(url) {
   const wsStatus = document.getElementById('ws-status');
-  const liveDot = document.getElementById('live-dot');
-  wsStatus.textContent = 'connecting…'; wsStatus.className = 'connecting';
-  liveDot.style.background = 'var(--thinking)';
+  const liveDot  = document.getElementById('live-dot');
+  wsStatus.textContent='connecting…'; wsStatus.className='connecting';
+  liveDot.style.background='var(--thinking)';
 
-  ws = new WebSocket(url);
+  try { ws = new WebSocket(url); } catch(e) {
+    wsStatus.textContent='✕ bad URL'; wsStatus.className='disconnected';
+    liveDot.style.background='var(--error)'; return;
+  }
 
   ws.onopen = () => {
-    wsStatus.textContent = '● bridge connected'; wsStatus.className = 'connected';
-    liveDot.style.background = 'var(--done)';
+    wsStatus.textContent='● bridge connected'; wsStatus.className='connected';
+    liveDot.style.background='var(--done)';
+    console.log('WS connected to', url);
   };
 
-  ws.onmessage = (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
+  ws.onmessage = e => {
+    let msg; try { msg=JSON.parse(e.data); } catch { return; }
     handleWSMessage(msg);
   };
 
   ws.onclose = () => {
-    wsStatus.textContent = '○ disconnected'; wsStatus.className = 'disconnected';
-    liveDot.style.background = 'var(--error)';
-    document.getElementById('sendbtn').disabled = false;
-    // Re-enable streaming if mid-message
-    if (selectedId && streaming[selectedId]) {
-      finishStreaming(selectedId, streaming[selectedId]);
-    }
-    // Reconnect after 5s
-    setTimeout(() => { if (ws.readyState !== WebSocket.OPEN) connectWS(url); }, 5000);
+    wsStatus.textContent='○ disconnected'; wsStatus.className='disconnected';
+    liveDot.style.background='var(--error)';
+    document.getElementById('sendbtn').disabled=false;
+    if (selectedId&&streaming[selectedId]) finishStreaming(selectedId,streaming[selectedId]);
+    setTimeout(()=>{ if(!ws||ws.readyState!==WebSocket.OPEN) connectWS(url); }, 5000);
   };
 
   ws.onerror = () => {
-    wsStatus.textContent = '✕ bridge error'; wsStatus.className = 'disconnected';
-    liveDot.style.background = 'var(--error)';
+    wsStatus.textContent='✕ bridge error'; wsStatus.className='disconnected';
+    liveDot.style.background='var(--error)';
   };
 }
 
 function handleWSMessage(msg) {
-  switch (msg.type) {
-    case 'init':
-      const modeLabel = {
-        'picoclaw': '🦐 PicoClaw',
-        'anthropic': '⚡ Anthropic',
-        'ollama': `🦙 ${msg.model || 'Ollama'}`,
-        'none': '⚠ No provider',
-      };
-      document.getElementById('mode-badge').textContent = modeLabel[msg.provider] || msg.provider || '—';
-      if (msg.agents && agents.length === 0) {
-        initAgents(msg.agents.map(a => ({
-          ...a,
-          pos: DEFAULT_AGENTS.find(d => d.id === a.id)?.pos || [0,0,0],
-          personality: DEFAULT_AGENTS.find(d => d.id === a.id)?.personality || '',
-        })));
-      }
-      break;
-
-    case 'status': {
-      const id = msg.agentId;
-      if (!agentState[id]) agentState[id] = {};
-      if (msg.status) agentState[id].status = msg.status;
-      if (msg.task)   agentState[id].task = msg.task;
-      if (msg.progress !== undefined) agentState[id].progress = msg.progress;
-      updateCard(id);
-
-      if (id === selectedId && msg.status === 'thinking') showTyping(id);
-      if (id === selectedId && msg.status === 'working') {
-        hideTyping();
-        if (!streaming[id]) startStreaming(id);
-      }
+  switch(msg.type) {
+    case 'init': {
+      const labels = { picoclaw:'🦐 PicoClaw', anthropic:'⚡ Anthropic', ollama:`🦙 ${msg.model||'Ollama'}`, none:'⚠ No provider' };
+      document.getElementById('mode-badge').textContent = labels[msg.provider]||msg.provider||'—';
       break;
     }
-
-    case 'token':
-      appendToken(msg.agentId, msg.token);
+    case 'status': {
+      const id=msg.agentId; if(!agentState[id]) agentState[id]={};
+      if(msg.status)   agentState[id].status=msg.status;
+      if(msg.task)     agentState[id].task=msg.task;
+      if(msg.progress!==undefined) agentState[id].progress=msg.progress;
+      updateCard(id);
+      if(id===selectedId&&msg.status==='thinking') showTyping(id);
+      if(id===selectedId&&msg.status==='working'&&!streaming[id]) { hideTyping(); startStreaming(id); }
       break;
-
+    }
+    case 'token':        appendToken(msg.agentId, msg.token); break;
     case 'message_done':
       finishStreaming(msg.agentId, msg.content);
-      agentHistory[msg.agentId].push({
-        role: 'agent', content: msg.content,
-        time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})
-      });
-      agentState[msg.agentId].status = 'idle';
+      agentHistory[msg.agentId].push({role:'agent',content:msg.content,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})});
+      agentState[msg.agentId].status='idle'; agentState[msg.agentId].task='Awaiting task';
       updateCard(msg.agentId);
-      document.getElementById('sendbtn').disabled = false;
+      document.getElementById('sendbtn').disabled=false;
       break;
-
     case 'error':
       hideTyping();
-      if (streaming[msg.agentId]) finishStreaming(msg.agentId, streaming[msg.agentId]);
-      pushMsg(msg.agentId, 'agent', `[Error: ${msg.error}]`);
-      agentState[msg.agentId].status = 'idle'; updateCard(msg.agentId);
-      document.getElementById('sendbtn').disabled = false;
+      if(streaming[msg.agentId]) finishStreaming(msg.agentId,streaming[msg.agentId]);
+      pushMsg(msg.agentId,'agent',`[Error: ${msg.error}]`);
+      agentState[msg.agentId].status='idle'; updateCard(msg.agentId);
+      document.getElementById('sendbtn').disabled=false;
       break;
   }
 }
 
-// ── Background autonomous visual shifts ──────────────────────
+// ══════════════════════════════════════════════════════════════
+//  BACKGROUND AUTONOMOUS ACTIVITY
+// ══════════════════════════════════════════════════════════════
 function startBackgroundShift() {
-  setInterval(() => {
-    agents.forEach(ag => {
-      if (ag.id === selectedId) return;
-      if (Math.random() < 0.3) {
-        const pool = ['working','thinking','testing','idle'];
-        const w    = [0.35, 0.2, 0.2, 0.25];
-        let r = Math.random(); let st = 'idle';
-        for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { st = pool[i]; break; } }
-        const tasks = TASKS[ag.id] || ['Working'];
-        const task = st === 'idle' ? 'Awaiting task' : tasks[Math.floor(Math.random()*tasks.length)];
-        agentState[ag.id] = { status:st, task, progress: st === 'idle' ? 0 : Math.floor(Math.random()*95)+5 };
-        updateCard(ag.id);
-      }
+  const pool=[  'working','thinking','testing','idle'];
+  const w   =[0.35,       0.25,      0.2,      0.2];
+  function pick(){let r=Math.random();for(let i=0;i<pool.length;i++){r-=w[i];if(r<=0)return pool[i];}return'idle';}
+  setInterval(()=>{
+    agents.forEach(ag=>{
+      if(ag.id===selectedId||Math.random()>0.3) return;
+      const status=pick();
+      const tasks=TASKS[ag.id]||['Working'];
+      agentState[ag.id]={ status, task:status==='idle'?'Awaiting task':tasks[Math.floor(Math.random()*tasks.length)], progress:status==='idle'?0:Math.floor(Math.random()*95)+5 };
+      updateCard(ag.id);
     });
-  }, 3500);
+  },3500);
 }
 
-// ── Clock ─────────────────────────────────────────────────────
-setInterval(() => {
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
-}, 1000);
+// ══════════════════════════════════════════════════════════════
+//  CLOCK
+// ══════════════════════════════════════════════════════════════
+setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleTimeString(); },1000);
 
-// ── Setup overlay & tabs ──────────────────────────────────────
-document.getElementById('logo-home').addEventListener('click', () => {
-  camLocked = false; selectedId = null;
-  agents.forEach(a => document.getElementById(`card-${a.id}`)?.classList.remove('sel'));
-});
-
-// Tab switching
+// ══════════════════════════════════════════════════════════════
+//  SETUP OVERLAY — all handlers at the bottom, after all functions declared
+// ══════════════════════════════════════════════════════════════
 function showTab(tab) {
-  ['bridge','direct','ollama'].forEach(t => {
-    document.getElementById('pane-'+t).style.display = t===tab ? 'block' : 'none';
-    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  ['bridge','direct','ollama'].forEach(t=>{
+    document.getElementById('pane-'+t).style.display=t===tab?'block':'none';
+    document.getElementById('tab-'+t).classList.toggle('active',t===tab);
   });
 }
 
-// Bridge connect
-document.getElementById('connect-btn').addEventListener('click', () => {
-  const url = document.getElementById('ws-url').value.trim() || 'ws://localhost:7070';
+// Logo click resets camera
+document.getElementById('logo-home').addEventListener('click',()=>{
+  camLocked=false; selectedId=null;
+  agents.forEach(a=>document.getElementById(`card-${a.id}`)?.classList.remove('sel'));
+});
+
+// Bridge tab
+document.getElementById('connect-btn').addEventListener('click',()=>{
+  const url=(document.getElementById('ws-url').value.trim()||'ws://localhost:7070');
   document.getElementById('overlay').classList.add('gone');
   initAgents(DEFAULT_AGENTS);
-  document.getElementById('mode-badge').textContent = '⟳ connecting…';
+  document.getElementById('mode-badge').textContent='⟳ connecting…';
   connectWS(url);
 });
 
-// Direct Anthropic API
-document.getElementById('direct-btn').addEventListener('click', () => {
-  const key = document.getElementById('apikey-input').value.trim();
-  if (!key) {
-    document.getElementById('apikey-input').focus();
-    document.getElementById('apikey-input').style.borderColor='var(--error)';
-    return;
-  }
-  apiKey = key; directMode = true;
+// Anthropic direct tab
+document.getElementById('direct-btn').addEventListener('click',()=>{
+  const key=document.getElementById('apikey-input').value.trim();
+  if(!key){ document.getElementById('apikey-input').focus(); document.getElementById('apikey-input').style.borderColor='var(--error)'; return; }
+  apiKey=key; directMode=true;
   document.getElementById('overlay').classList.add('gone');
-  document.getElementById('mode-badge').textContent = '⚡ Anthropic';
-  document.getElementById('ws-status').textContent = '○ no bridge';
-  document.getElementById('ws-status').className = 'disconnected';
+  document.getElementById('mode-badge').textContent='⚡ Anthropic';
+  document.getElementById('ws-status').textContent='○ no bridge';
+  document.getElementById('ws-status').className='disconnected';
   initAgents(DEFAULT_AGENTS);
 });
 
-// ── Ollama direct-browser mode ──────────────────────────────
-let ollamaBase  = 'http://localhost:11434';
-let ollamaModel = '';
-let ollamaMode  = false;
-
-document.getElementById('ollama-check-btn').addEventListener('click', async () => {
-  const base = document.getElementById('ollama-url-input').value.trim() || 'http://localhost:11434';
-  const stat = document.getElementById('ollama-status');
-  stat.textContent = 'Checking…'; stat.style.color='var(--muted2)';
+// Ollama check button
+document.getElementById('ollama-check-btn').addEventListener('click',async()=>{
+  const base=document.getElementById('ollama-url-input').value.trim()||'http://localhost:11434';
+  const stat=document.getElementById('ollama-status');
+  stat.textContent='Checking…'; stat.style.color='var(--muted2)';
   try {
-    const r = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(4000) });
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    const j = await r.json();
-    const models = (j.models||[]).map(m=>m.name);
-    if (!models.length) {
-      stat.textContent = '⚠ Ollama running but no models. Run: ollama pull llama3';
+    const r=await fetch(`${base}/api/tags`,{signal:AbortSignal.timeout(4000)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    const models=(j.models||[]).map(m=>m.name);
+    if(!models.length){
+      stat.textContent='⚠ Ollama running but no models — run: ollama pull llama3';
       stat.style.color='var(--thinking)';
     } else {
-      stat.textContent = '✓ Connected — models: '+models.join(', ');
+      stat.textContent='✓ Connected — models: '+models.join(', ');
       stat.style.color='var(--done)';
-      ollamaBase = base;
-      // Auto-fill model if empty
-      const inp = document.getElementById('ollama-model-input');
-      if (!inp.value) {
+      ollamaBase=base;
+      const inp=document.getElementById('ollama-model-input');
+      if(!inp.value){
         const pref=['llama3','llama3.2','llama3.1','mistral','gemma2','phi3'];
-        const pick = pref.find(p=>models.some(m=>m.startsWith(p))) || models[0];
-        inp.value = models.find(m=>m.startsWith(pick)) || pick;
+        const pick=pref.find(p=>models.some(m=>m.startsWith(p)))||models[0];
+        inp.value=models.find(m=>m.startsWith(pick.split(':')[0]))||pick;
       }
     }
-  } catch(e) {
-    stat.textContent = '✗ Cannot reach Ollama: '+e.message;
+  } catch(e){
+    stat.textContent='✗ Cannot reach Ollama: '+e.message;
     stat.style.color='var(--error)';
   }
 });
 
-document.getElementById('ollama-btn').addEventListener('click', () => {
-  ollamaBase  = document.getElementById('ollama-url-input').value.trim() || 'http://localhost:11434';
-  ollamaModel = document.getElementById('ollama-model-input').value.trim() || 'llama3';
-  ollamaMode  = true; directMode = true;
+// Ollama launch tab
+document.getElementById('ollama-btn').addEventListener('click',()=>{
+  ollamaBase =document.getElementById('ollama-url-input').value.trim()||'http://localhost:11434';
+  ollamaModel=document.getElementById('ollama-model-input').value.trim()||'llama3';
+  ollamaMode=true; directMode=true;
   document.getElementById('overlay').classList.add('gone');
-  document.getElementById('mode-badge').textContent = `🦙 ${ollamaModel}`;
-  document.getElementById('ws-status').textContent = '○ no bridge';
-  document.getElementById('ws-status').className = 'disconnected';
+  document.getElementById('mode-badge').textContent=`🦙 ${ollamaModel}`;
+  document.getElementById('ws-status').textContent='○ no bridge';
+  document.getElementById('ws-status').className='disconnected';
   initAgents(DEFAULT_AGENTS);
 });
 </script>
