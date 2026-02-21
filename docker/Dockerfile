@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS picoclaw-builder
+FROM golang:1.25-alpine AS picoclaw-builder
 
 RUN apk add --no-cache git make curl
 WORKDIR /build
