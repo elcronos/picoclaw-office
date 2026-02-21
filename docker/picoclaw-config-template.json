@@ -2,7 +2,7 @@
   "agents": {
     "defaults": {
       "workspace": "/root/.picoclaw/workspace",
-      "model": "claude-opus-4-5",
+      "model": "MODEL_PLACEHOLDER",
       "max_tokens": 4096,
       "temperature": 0.7,
       "max_tool_iterations": 20
@@ -12,6 +12,10 @@
     "anthropic": {
       "api_key": "ANTHROPIC_API_KEY_PLACEHOLDER",
       "api_base": "https://api.anthropic.com"
+    },
+    "ollama": {
+      "api_key": "ollama",
+      "api_base": "OLLAMA_BASE_PLACEHOLDER"
     }
   },
   "tools": {

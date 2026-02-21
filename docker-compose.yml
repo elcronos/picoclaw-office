@@ -9,9 +9,14 @@ services:
     ports:
       - "7070:7070"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - OLLAMA_BASE=${OLLAMA_BASE:-http://host-gateway:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
       - NODE_ENV=production
+    extra_hosts:
+      # lets the container reach Ollama running on host machine
+      - "host-gateway:host-gateway"
     volumes:
       - picoclaw-workspace:/root/.picoclaw/workspace
     restart: unless-stopped

@@ -330,6 +330,14 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); col
   border-radius:4px; background:var(--surface2);
   border:1px solid var(--border); color:var(--muted2); margin:2px;
 }
+
+.tab-btn {
+  flex:1; background:transparent; border:none; color:var(--muted2);
+  padding:7px 6px; border-radius:6px; cursor:pointer;
+  font-family:var(--font-mono); font-size:10px; transition:all .15s;
+}
+.tab-btn.active { background:var(--surface2); color:var(--text); }
+.tab-btn:hover:not(.active) { color:var(--text); }
 </style>
 </head>
 <body>
@@ -339,31 +347,65 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); col
   <div class="setup-card">
     <div class="setup-logo">🦐</div>
     <h1>PicoClaw Office</h1>
-    <p class="sub">Real AI agents in a 3D workspace. Conversations are live — powered by PicoClaw + Claude. Each agent has a specialty and responds in character.</p>
+    <p class="sub">Real AI agents in a 3D workspace. Works with PicoClaw, Anthropic API, or <strong>Ollama (free, no key needed)</strong>.</p>
 
-    <div class="setup-field">
-      <label>Bridge URL (WebSocket)</label>
-      <input id="ws-url" type="text" value="ws://localhost:7070" placeholder="ws://localhost:7070">
-    </div>
-    <div class="setup-field">
-      <label>Anthropic API Key <span style="color:var(--muted);font-weight:400">(if not using docker)</span></label>
-      <input id="apikey-input" type="password" placeholder="sk-ant-api03-... (optional if bridge is running)">
+    <!-- Tab switcher -->
+    <div style="display:flex;gap:6px;margin-bottom:18px;background:var(--bg);border-radius:9px;padding:4px;">
+      <button class="tab-btn active" id="tab-bridge" onclick="showTab('bridge')">Bridge / Docker</button>
+      <button class="tab-btn" id="tab-direct" onclick="showTab('direct')">API Key Only</button>
+      <button class="tab-btn" id="tab-ollama" onclick="showTab('ollama')">🦙 Ollama (free)</button>
     </div>
 
-    <div class="setup-btns">
-      <button class="btn-primary" id="connect-btn">Connect to Office →</button>
-      <button class="btn-secondary" id="direct-btn">Use API Key Only (no bridge)</button>
+    <!-- Bridge tab -->
+    <div id="pane-bridge">
+      <div class="setup-field">
+        <label>Bridge URL (WebSocket)</label>
+        <input id="ws-url" type="text" value="ws://localhost:7070" placeholder="ws://localhost:7070">
+      </div>
+      <p class="setup-note" style="text-align:left;margin-bottom:14px">
+        Start bridge first: <code style="color:var(--accent)">./launch.sh</code> or <code style="color:var(--accent)">./launch.sh node</code><br>
+        Bridge auto-detects PicoClaw → Anthropic → Ollama.
+      </p>
+      <button class="btn-primary" id="connect-btn">Connect to Bridge →</button>
     </div>
 
-    <p class="setup-note">
-      Run the bridge: <code style="color:var(--accent)">docker compose up</code> or <code style="color:var(--accent)">node server/bridge.js</code><br>
-      Bridge auto-detects PicoClaw binary and falls back to direct API.
-    </p>
-    <div style="margin-top:12px">
-      <span class="tag">Go 1.21+</span>
+    <!-- Direct API tab -->
+    <div id="pane-direct" style="display:none">
+      <div class="setup-field">
+        <label>Anthropic API Key</label>
+        <input id="apikey-input" type="password" placeholder="sk-ant-api03-...">
+      </div>
+      <p class="setup-note" style="text-align:left;margin-bottom:14px">
+        Calls Anthropic directly from your browser. No bridge needed.<br>
+        Get a key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a>
+      </p>
+      <button class="btn-primary" id="direct-btn">Launch with API Key →</button>
+    </div>
+
+    <!-- Ollama tab -->
+    <div id="pane-ollama" style="display:none">
+      <div class="setup-field">
+        <label>Ollama URL</label>
+        <input id="ollama-url-input" type="text" value="http://localhost:11434" placeholder="http://localhost:11434">
+      </div>
+      <div class="setup-field">
+        <label>Model <span style="color:var(--muted);font-weight:400">(leave blank to auto-detect)</span></label>
+        <input id="ollama-model-input" type="text" placeholder="llama3, mistral, gemma2…">
+      </div>
+      <div id="ollama-status" style="font-size:11px;color:var(--muted2);margin-bottom:14px;min-height:18px"></div>
+      <button class="btn-secondary" id="ollama-check-btn" style="margin-bottom:8px;width:100%">Check Ollama connection</button>
+      <button class="btn-primary" id="ollama-btn">Launch with Ollama →</button>
+      <p class="setup-note" style="margin-top:12px">
+        Install Ollama: <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com</a><br>
+        Then: <code style="color:var(--accent)">ollama pull llama3</code>
+      </p>
+    </div>
+
+    <div style="margin-top:16px">
+      <span class="tag">PicoClaw v0.0.1</span>
       <span class="tag">&lt;10MB RAM</span>
       <span class="tag">RISC-V · ARM · x86</span>
-      <span class="tag">claude-sonnet-4</span>
+      <span class="tag">Ollama · Anthropic</span>
     </div>
   </div>
 </div>
@@ -1166,7 +1208,11 @@ async function sendMessage() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'chat', agentId: selectedId, message: text }));
   } else if (directMode) {
-    await directApiCall(selectedId, text);
+    if (ollamaMode) {
+      await ollamaApiCall(selectedId, text);
+    } else {
+      await directApiCall(selectedId, text);
+    }
     document.getElementById('sendbtn').disabled = false;
   } else {
     hideTyping();
@@ -1185,6 +1231,66 @@ document.getElementById('msginput').addEventListener('input', function() {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
+
+
+// ── Ollama direct-browser call ──────────────────────────────
+async function ollamaApiCall(id, userText) {
+  const ag = agents.find(a => a.id === id);
+  const history = (agentHistory[id] || [])
+    .filter(m => m.role === 'user' || m.role === 'agent')
+    .slice(-18)
+    .map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.content }));
+  if (history.length && history[history.length-1].role === 'user') history.pop();
+
+  const msgs = [
+    { role: 'system', content: ag.personality || ag.systemPrompt || '' },
+    ...history,
+    { role: 'user', content: userText },
+  ];
+
+  agentState[id].status = 'working'; agentState[id].task = `${ollamaModel} generating...`;
+  updateCard(id);
+
+  try {
+    const resp = await fetch(`${ollamaBase}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ollama' },
+      body: JSON.stringify({ model: ollamaModel, messages: msgs, stream: true }),
+    });
+
+    hideTyping();
+    startStreaming(id);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let full = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of dec.decode(value).split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const p = JSON.parse(data);
+          const tok = p.choices?.[0]?.delta?.content;
+          if (tok) { full += tok; appendToken(id, tok); }
+        } catch {}
+      }
+    }
+
+    finishStreaming(id, full);
+    agentHistory[id].push({ role: 'agent', content: full, time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) });
+    agentState[id].status = 'idle'; agentState[id].task = 'Awaiting task';
+    updateCard(id);
+
+  } catch (err) {
+    hideTyping();
+    pushMsg(id, 'agent', `[Ollama error: ${err.message}]`);
+    agentState[id].status = 'idle'; updateCard(id);
+  }
+}
 
 // ── Direct API (no bridge) ────────────────────────────────────
 async function directApiCall(id, userText) {
@@ -1296,7 +1402,13 @@ function connectWS(url) {
 function handleWSMessage(msg) {
   switch (msg.type) {
     case 'init':
-      document.getElementById('mode-badge').textContent = msg.mode === 'picoclaw' ? '🦐 PicoClaw' : '⚡ Direct API';
+      const modeLabel = {
+        'picoclaw': '🦐 PicoClaw',
+        'anthropic': '⚡ Anthropic',
+        'ollama': `🦙 ${msg.model || 'Ollama'}`,
+        'none': '⚠ No provider',
+      };
+      document.getElementById('mode-badge').textContent = modeLabel[msg.provider] || msg.provider || '—';
       if (msg.agents && agents.length === 0) {
         initAgents(msg.agents.map(a => ({
           ...a,
@@ -1371,28 +1483,86 @@ setInterval(() => {
   document.getElementById('clock').textContent = new Date().toLocaleTimeString();
 }, 1000);
 
-// ── Setup overlay ─────────────────────────────────────────────
+// ── Setup overlay & tabs ──────────────────────────────────────
 document.getElementById('logo-home').addEventListener('click', () => {
   camLocked = false; selectedId = null;
   agents.forEach(a => document.getElementById(`card-${a.id}`)?.classList.remove('sel'));
 });
 
+// Tab switching
+function showTab(tab) {
+  ['bridge','direct','ollama'].forEach(t => {
+    document.getElementById('pane-'+t).style.display = t===tab ? 'block' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+// Bridge connect
 document.getElementById('connect-btn').addEventListener('click', () => {
   const url = document.getElementById('ws-url').value.trim() || 'ws://localhost:7070';
-  const key = document.getElementById('apikey-input').value.trim();
-  if (key) apiKey = key;
   document.getElementById('overlay').classList.add('gone');
   initAgents(DEFAULT_AGENTS);
   document.getElementById('mode-badge').textContent = '⟳ connecting…';
   connectWS(url);
 });
 
+// Direct Anthropic API
 document.getElementById('direct-btn').addEventListener('click', () => {
   const key = document.getElementById('apikey-input').value.trim();
-  if (!key) { document.getElementById('apikey-input').focus(); document.getElementById('apikey-input').style.borderColor='var(--error)'; return; }
+  if (!key) {
+    document.getElementById('apikey-input').focus();
+    document.getElementById('apikey-input').style.borderColor='var(--error)';
+    return;
+  }
   apiKey = key; directMode = true;
   document.getElementById('overlay').classList.add('gone');
-  document.getElementById('mode-badge').textContent = '⚡ Direct API';
+  document.getElementById('mode-badge').textContent = '⚡ Anthropic';
+  document.getElementById('ws-status').textContent = '○ no bridge';
+  document.getElementById('ws-status').className = 'disconnected';
+  initAgents(DEFAULT_AGENTS);
+});
+
+// ── Ollama direct-browser mode ──────────────────────────────
+let ollamaBase  = 'http://localhost:11434';
+let ollamaModel = '';
+let ollamaMode  = false;
+
+document.getElementById('ollama-check-btn').addEventListener('click', async () => {
+  const base = document.getElementById('ollama-url-input').value.trim() || 'http://localhost:11434';
+  const stat = document.getElementById('ollama-status');
+  stat.textContent = 'Checking…'; stat.style.color='var(--muted2)';
+  try {
+    const r = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(4000) });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const j = await r.json();
+    const models = (j.models||[]).map(m=>m.name);
+    if (!models.length) {
+      stat.textContent = '⚠ Ollama running but no models. Run: ollama pull llama3';
+      stat.style.color='var(--thinking)';
+    } else {
+      stat.textContent = '✓ Connected — models: '+models.join(', ');
+      stat.style.color='var(--done)';
+      ollamaBase = base;
+      // Auto-fill model if empty
+      const inp = document.getElementById('ollama-model-input');
+      if (!inp.value) {
+        const pref=['llama3','llama3.2','llama3.1','mistral','gemma2','phi3'];
+        const pick = pref.find(p=>models.some(m=>m.startsWith(p))) || models[0];
+        inp.value = models.find(m=>m.startsWith(pick)) || pick;
+      }
+    }
+  } catch(e) {
+    stat.textContent = '✗ Cannot reach Ollama: '+e.message;
+    stat.style.color='var(--error)';
+  }
+});
+
+document.getElementById('ollama-btn').addEventListener('click', () => {
+  ollamaBase  = document.getElementById('ollama-url-input').value.trim() || 'http://localhost:11434';
+  ollamaModel = document.getElementById('ollama-model-input').value.trim() || 'llama3';
+  ollamaMode  = true; directMode = true;
+  document.getElementById('overlay').classList.add('gone');
+  document.getElementById('mode-badge').textContent = `🦙 ${ollamaModel}`;
   document.getElementById('ws-status').textContent = '○ no bridge';
   document.getElementById('ws-status').className = 'disconnected';
   initAgents(DEFAULT_AGENTS);

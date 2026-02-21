@@ -65,6 +65,67 @@ The bridge auto-detects whether the `picoclaw` binary is in your PATH:
 
 ---
 
+
+---
+
+## 🦙 Running with Ollama (free, no API key)
+
+Ollama lets you run models locally — completely free, no account needed.
+
+### 1. Install Ollama
+
+```bash
+# macOS / Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows: download from https://ollama.com
+```
+
+### 2. Pull a model
+
+```bash
+ollama pull llama3        # recommended (4GB)
+ollama pull mistral       # smaller, fast
+ollama pull gemma2        # Google's model
+ollama pull phi3          # very small, fast
+```
+
+### 3. Launch PicoClaw Office
+
+```bash
+# Auto-detects Ollama if no ANTHROPIC_API_KEY is set
+./launch.sh
+
+# Or specify model explicitly:
+OLLAMA_MODEL=mistral ./launch.sh
+
+# Or use the UI directly (no bridge needed):
+# Open public/index.html → click "🦙 Ollama" tab
+```
+
+### Provider priority (auto-detected)
+
+```
+1. PicoClaw binary in PATH
+2. ANTHROPIC_API_KEY set → Anthropic API
+3. Ollama running locally → free local AI
+4. None found → agents show error, prompt for key
+```
+
+### Supported Ollama models
+
+| Model | Size | Notes |
+|-------|------|-------|
+| `llama3` | 4.7GB | Best balance, recommended |
+| `llama3.2` | 2GB | Smaller, still excellent |
+| `mistral` | 4.1GB | Fast, good reasoning |
+| `gemma2` | 5.5GB | Google's model |
+| `phi3` | 2.3GB | Very fast, smaller context |
+| `qwen2` | 4.4GB | Good multilingual |
+| `deepseek-r1` | varies | Strong reasoning |
+
+Any OpenAI-compatible model works — the bridge uses `/v1/chat/completions`.
+
 ## Architecture
 
 ```
