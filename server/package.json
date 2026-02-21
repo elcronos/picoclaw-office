@@ -1,0 +1,16 @@
+{
+  "name": "picoclaw-office-bridge",
+  "version": "1.0.0",
+  "description": "WebSocket bridge between PicoClaw agents and the 3D office UI",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "dev": "node --watch bridge.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

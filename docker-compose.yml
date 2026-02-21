@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  picoclaw-bridge:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    container_name: picoclaw-office-bridge
+    ports:
+      - "7070:7070"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - NODE_ENV=production
+    volumes:
+      - picoclaw-workspace:/root/.picoclaw/workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7070/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  picoclaw-ui:
+    image: nginx:alpine
+    container_name: picoclaw-office-ui
+    ports:
+      - "8080:80"
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+    depends_on:
+      - picoclaw-bridge
+    restart: unless-stopped
+
+volumes:
+  picoclaw-workspace:

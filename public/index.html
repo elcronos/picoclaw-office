@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PicoClaw Office</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800;900&display=swap');
+
+:root {
+  --bg: #080a0f;
+  --surface: #0e1118;
+  --surface2: #141820;
+  --border: #1c2234;
+  --border2: #242d42;
+  --accent: #00e5ff;
+  --accent-dim: rgba(0,229,255,0.08);
+  --text: #dde4f0;
+  --muted: #4a5568;
+  --muted2: #64748b;
+  --working: #00e5ff;
+  --thinking: #fbbf24;
+  --testing: #a78bfa;
+  --idle: #4a5568;
+  --done: #34d399;
+  --error: #f87171;
+  --font-mono: 'Space Mono', monospace;
+  --font-display: 'Syne', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--font-mono); }
+
+/* ─── canvas ─── */
+#c { position:fixed; inset:0; z-index:0; }
+
+/* ─── HUD shell ─── */
+#hud { position:fixed; inset:0; z-index:10; pointer-events:none; }
+
+/* scanlines */
+#hud::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+}
+
+/* corner brackets */
+.bracket {
+  position:absolute; width:22px; height:22px;
+  border-color:rgba(0,229,255,0.3); border-style:solid;
+}
+.bracket-tl { top:10px; left:10px; border-width:1px 0 0 1px; }
+.bracket-tr { top:10px; right:10px; border-width:1px 1px 0 0; }
+.bracket-bl { bottom:10px; left:10px; border-width:0 0 1px 1px; }
+.bracket-br { bottom:10px; right:10px; border-width:0 1px 1px 0; }
+
+/* ─── TOP BAR ─── */
+#topbar {
+  position:absolute; top:0; left:0; right:0;
+  height:52px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 20px;
+  background:linear-gradient(180deg,rgba(8,10,15,0.98) 0%,rgba(8,10,15,0.7) 100%);
+  border-bottom:1px solid var(--border);
+  pointer-events:all;
+}
+
+.logo {
+  display:flex; align-items:center; gap:10px;
+  font-family:var(--font-display); font-weight:900; font-size:17px;
+  letter-spacing:-0.3px; cursor:pointer; user-select:none;
+}
+.logo-badge {
+  background:linear-gradient(135deg,#00e5ff,#7c3aed);
+  border-radius:7px; width:30px; height:30px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; filter:drop-shadow(0 0 6px rgba(0,229,255,0.4));
+}
+.logo span { color:var(--muted2); font-weight:400; font-size:13px; margin-left:2px; }
+
+.topbar-center {
+  display:flex; align-items:center; gap:16px; font-size:11px; color:var(--muted2);
+}
+
+#mode-badge {
+  padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700;
+  letter-spacing:0.5px; text-transform:uppercase;
+  border:1px solid rgba(0,229,255,0.25); color:var(--accent);
+  background:rgba(0,229,255,0.06);
+}
+
+.topbar-right {
+  display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted2);
+}
+
+.live-dot {
+  width:6px; height:6px; border-radius:50%; background:var(--done);
+  animation: livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+#ws-status { font-size:10px; }
+#ws-status.connected { color:var(--done); }
+#ws-status.disconnected { color:var(--error); }
+#ws-status.connecting { color:var(--thinking); }
+
+/* ─── AGENT RAIL (right) ─── */
+#rail {
+  position:absolute; top:52px; right:0; bottom:0;
+  width:310px; overflow-y:auto; pointer-events:all;
+  padding:10px 10px 10px 6px;
+  display:flex; flex-direction:column; gap:7px;
+  background:linear-gradient(270deg,rgba(8,10,15,0.92) 60%,transparent);
+  scrollbar-width:none;
+}
+#rail::-webkit-scrollbar { display:none; }
+
+.acard {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:11px; padding:11px 13px;
+  cursor:pointer; transition:all 0.18s;
+  position:relative; overflow:hidden;
+}
+.acard::after {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--idle); border-radius:3px 0 0 3px; transition:all 0.3s;
+}
+.acard.working::after  { background:var(--working); box-shadow:0 0 10px var(--working); }
+.acard.thinking::after { background:var(--thinking); box-shadow:0 0 10px var(--thinking); }
+.acard.testing::after  { background:var(--testing); box-shadow:0 0 10px var(--testing); }
+.acard.done::after     { background:var(--done); }
+.acard.idle::after     { background:var(--idle); }
+
+.acard:hover { border-color:var(--border2); transform:translateX(-3px); }
+.acard.sel   { border-color:rgba(0,229,255,0.35); background:rgba(0,229,255,0.03); transform:translateX(-3px); }
+
+.acard-top { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+
+.avatar-wrap {
+  position:relative; flex-shrink:0;
+  width:38px; height:38px;
+}
+.avatar-bg {
+  width:38px; height:38px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; border:2px solid var(--border2);
+  background:var(--surface2);
+}
+.avatar-ring {
+  position:absolute; inset:-3px; border-radius:50%;
+  border:2px solid transparent;
+  background:linear-gradient(var(--surface),var(--surface)) padding-box,
+             linear-gradient(135deg,var(--agent-color),transparent 60%) border-box;
+  opacity:0; transition:opacity 0.3s;
+}
+.acard.working .avatar-ring,
+.acard.thinking .avatar-ring { opacity:1; animation:ringRotate 3s linear infinite; }
+@keyframes ringRotate { to { transform:rotate(360deg); } }
+
+.ameta { flex:1; min-width:0; }
+.aname { font-family:var(--font-display); font-weight:700; font-size:13px; line-height:1.2; }
+.arole { font-size:10px; color:var(--muted2); margin-top:2px; }
+
+.sbadge {
+  flex-shrink:0; font-size:9px; font-weight:700;
+  letter-spacing:0.6px; text-transform:uppercase;
+  padding:2px 8px; border-radius:20px; border:1px solid;
+}
+.s-working  { color:var(--working); border-color:rgba(0,229,255,.3); background:rgba(0,229,255,.07); }
+.s-thinking { color:var(--thinking); border-color:rgba(251,191,36,.3); background:rgba(251,191,36,.07); }
+.s-testing  { color:var(--testing); border-color:rgba(167,139,250,.3); background:rgba(167,139,250,.07); }
+.s-idle     { color:var(--muted2); border-color:rgba(74,85,104,.3); background:rgba(74,85,104,.07); }
+.s-done     { color:var(--done); border-color:rgba(52,211,153,.3); background:rgba(52,211,153,.07); }
+
+.atask { font-size:10px; color:var(--muted2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:7px; }
+
+.aprog { height:2px; background:var(--border); border-radius:1px; overflow:hidden; }
+.aprog-fill { height:100%; border-radius:1px; transition:width .6s ease,background .3s; }
+
+/* ─── CHAT PANE (left) ─── */
+#chatpane {
+  position:absolute; top:52px; left:0; bottom:0;
+  width:370px; display:flex; flex-direction:column;
+  pointer-events:all;
+  background:linear-gradient(90deg,rgba(8,10,15,0.95) 70%,transparent);
+  padding:0;
+}
+
+#chat-head {
+  padding:14px 16px 12px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:12px;
+}
+
+#ch-avatar {
+  width:36px; height:36px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; background:var(--surface2); border:1.5px solid var(--border2);
+  flex-shrink:0;
+}
+#ch-name { font-family:var(--font-display); font-weight:700; font-size:14px; }
+#ch-role { font-size:10px; color:var(--muted2); margin-top:1px; }
+#ch-badge { margin-left:auto; flex-shrink:0; }
+#ch-source { font-size:9px; color:var(--muted); margin-left:8px; }
+
+#messages {
+  flex:1; overflow-y:auto; padding:14px 14px 8px;
+  display:flex; flex-direction:column; gap:10px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+
+#empty-state {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:12px; color:var(--muted); text-align:center;
+  padding:24px;
+}
+#empty-state .ei { font-size:44px; opacity:.3; }
+#empty-state p  { font-size:11px; line-height:1.9; }
+
+.msg { display:flex; flex-direction:column; gap:3px; max-width:88%; animation:msgIn 0.18s ease-out; }
+.msg.user  { align-self:flex-end; align-items:flex-end; }
+.msg.agent { align-self:flex-start; }
+
+@keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+.bubble {
+  padding:9px 13px; border-radius:11px; font-size:12px; line-height:1.65;
+  word-break:break-word;
+}
+.msg.user  .bubble { background:rgba(0,229,255,.1); border:1px solid rgba(0,229,255,.2); border-bottom-right-radius:2px; }
+.msg.agent .bubble { background:var(--surface); border:1px solid var(--border); border-bottom-left-radius:2px; }
+.msg.agent.streaming .bubble { border-color:var(--border2); }
+
+.mtime { font-size:9px; color:var(--muted); }
+
+.typing {
+  align-self:flex-start; display:flex; gap:4px;
+  padding:10px 14px; background:var(--surface);
+  border:1px solid var(--border); border-radius:11px;
+  border-bottom-left-radius:2px; animation:msgIn 0.18s ease-out;
+}
+.td {
+  width:5px; height:5px; border-radius:50%; background:var(--muted2);
+  animation:tdPop 1.2s infinite;
+}
+.td:nth-child(2){animation-delay:.2s} .td:nth-child(3){animation-delay:.4s}
+@keyframes tdPop { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-5px);opacity:1} }
+
+.cursor { display:inline-block; width:2px; height:13px; background:var(--accent); margin-left:2px; vertical-align:middle; animation:blink .7s step-end infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+#input-row {
+  padding:12px 14px;
+  border-top:1px solid var(--border);
+  display:flex; gap:8px; align-items:flex-end;
+}
+
+#msginput {
+  flex:1; background:var(--surface); border:1px solid var(--border);
+  color:var(--text); border-radius:9px; padding:10px 13px;
+  font-family:var(--font-mono); font-size:12px; resize:none;
+  outline:none; line-height:1.55; max-height:120px;
+  transition:border-color .2s;
+}
+#msginput:focus { border-color:rgba(0,229,255,.4); }
+#msginput:disabled { opacity:.4; cursor:not-allowed; }
+
+#sendbtn {
+  background:var(--accent); color:#000; border:none; border-radius:9px;
+  padding:10px 16px; font-family:var(--font-display); font-size:12px; font-weight:800;
+  cursor:pointer; white-space:nowrap; transition:all .2s;
+  letter-spacing:0.2px;
+}
+#sendbtn:hover:not(:disabled) { background:#33eaff; transform:translateY(-1px); }
+#sendbtn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
+
+/* ─── floor label ─── */
+#floorlabel {
+  position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+  font-size:9px; color:var(--muted); letter-spacing:2px;
+  text-transform:uppercase; pointer-events:none; white-space:nowrap;
+}
+
+/* ─── SETUP OVERLAY ─── */
+#overlay {
+  position:fixed; inset:0; z-index:100;
+  background:radial-gradient(ellipse at center, #0d1021 0%, #080a0f 100%);
+  display:flex; align-items:center; justify-content:center;
+}
+#overlay.gone { display:none; }
+
+.setup-card {
+  background:var(--surface); border:1px solid var(--border2);
+  border-radius:18px; padding:36px 32px; max-width:440px; width:calc(100% - 40px);
+  text-align:center;
+}
+.setup-logo { font-size:52px; margin-bottom:16px; filter:drop-shadow(0 0 20px rgba(0,229,255,0.3)); }
+.setup-card h1 { font-family:var(--font-display); font-weight:900; font-size:26px; margin-bottom:8px; }
+.setup-card .sub { font-size:12px; color:var(--muted2); line-height:1.8; margin-bottom:24px; }
+
+.setup-field { margin-bottom:12px; text-align:left; }
+.setup-field label { display:block; font-size:10px; color:var(--muted2); margin-bottom:5px; letter-spacing:.5px; text-transform:uppercase; }
+.setup-field input {
+  width:100%; background:var(--bg); border:1px solid var(--border2);
+  color:var(--text); border-radius:9px; padding:11px 14px;
+  font-family:var(--font-mono); font-size:12px; outline:none;
+  transition:border-color .2s;
+}
+.setup-field input:focus { border-color:rgba(0,229,255,.45); }
+
+.setup-btns { display:flex; flex-direction:column; gap:9px; margin-top:20px; }
+.btn-primary {
+  width:100%; background:linear-gradient(135deg,var(--accent),#7c3aed);
+  color:#fff; border:none; border-radius:10px;
+  padding:13px; font-family:var(--font-display); font-weight:800;
+  font-size:14px; cursor:pointer; transition:all .2s; letter-spacing:.2px;
+}
+.btn-primary:hover { transform:translateY(-1px); filter:brightness(1.1); }
+.btn-secondary {
+  width:100%; background:transparent;
+  color:var(--muted2); border:1px solid var(--border2); border-radius:10px;
+  padding:11px; font-family:var(--font-display); font-weight:700;
+  font-size:13px; cursor:pointer; transition:all .2s;
+}
+.btn-secondary:hover { border-color:var(--border2); color:var(--text); }
+.setup-note { font-size:10px; color:var(--muted); margin-top:14px; line-height:1.7; }
+
+.tag {
+  display:inline-block; font-size:9px; padding:2px 7px;
+  border-radius:4px; background:var(--surface2);
+  border:1px solid var(--border); color:var(--muted2); margin:2px;
+}
+</style>
+</head>
+<body>
+
+<!-- Setup overlay -->
+<div id="overlay">
+  <div class="setup-card">
+    <div class="setup-logo">🦐</div>
+    <h1>PicoClaw Office</h1>
+    <p class="sub">Real AI agents in a 3D workspace. Conversations are live — powered by PicoClaw + Claude. Each agent has a specialty and responds in character.</p>
+
+    <div class="setup-field">
+      <label>Bridge URL (WebSocket)</label>
+      <input id="ws-url" type="text" value="ws://localhost:7070" placeholder="ws://localhost:7070">
+    </div>
+    <div class="setup-field">
+      <label>Anthropic API Key <span style="color:var(--muted);font-weight:400">(if not using docker)</span></label>
+      <input id="apikey-input" type="password" placeholder="sk-ant-api03-... (optional if bridge is running)">
+    </div>
+
+    <div class="setup-btns">
+      <button class="btn-primary" id="connect-btn">Connect to Office →</button>
+      <button class="btn-secondary" id="direct-btn">Use API Key Only (no bridge)</button>
+    </div>
+
+    <p class="setup-note">
+      Run the bridge: <code style="color:var(--accent)">docker compose up</code> or <code style="color:var(--accent)">node server/bridge.js</code><br>
+      Bridge auto-detects PicoClaw binary and falls back to direct API.
+    </p>
+    <div style="margin-top:12px">
+      <span class="tag">Go 1.21+</span>
+      <span class="tag">&lt;10MB RAM</span>
+      <span class="tag">RISC-V · ARM · x86</span>
+      <span class="tag">claude-sonnet-4</span>
+    </div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="bracket bracket-tl"></div>
+  <div class="bracket bracket-tr"></div>
+  <div class="bracket bracket-bl"></div>
+  <div class="bracket bracket-br"></div>
+
+  <div id="topbar">
+    <div class="logo" id="logo-home">
+      <div class="logo-badge">🦐</div>
+      PicoClaw <span>// office</span>
+    </div>
+    <div class="topbar-center">
+      <div class="live-dot" id="live-dot" style="background:var(--muted)"></div>
+      <div id="ws-status" class="connecting">connecting...</div>
+      <div id="mode-badge">—</div>
+      <div id="active-stat" style="font-size:10px;color:var(--muted2)">0 active</div>
+    </div>
+    <div class="topbar-right">
+      <div id="clock" style="font-size:11px;color:var(--accent);letter-spacing:1px">00:00:00</div>
+    </div>
+  </div>
+
+  <!-- Chat pane -->
+  <div id="chatpane">
+    <div id="chat-head">
+      <div id="ch-avatar">?</div>
+      <div>
+        <div id="ch-name">Select an agent</div>
+        <div id="ch-role">Click a card or desk to chat</div>
+      </div>
+      <div id="ch-badge" class="sbadge s-idle">IDLE</div>
+      <div id="ch-source"></div>
+    </div>
+    <div id="messages">
+      <div id="empty-state">
+        <div class="ei">🤖</div>
+        <p>Select any agent from the panel<br>to open a real-time conversation.<br><br>Agents are powered by PicoClaw +<br>Claude and respond in character.</p>
+      </div>
+    </div>
+    <div id="input-row">
+      <textarea id="msginput" rows="1" placeholder="Message the agent…" disabled></textarea>
+      <button id="sendbtn" disabled>Send ↑</button>
+    </div>
+  </div>
+
+  <!-- Agent rail -->
+  <div id="rail"></div>
+
+  <div id="floorlabel">PicoClaw Office · Agent Workspace · v0.0.1</div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════
+let ws = null;
+let directMode = false;
+let apiKey = '';
+let selectedId = null;
+let agents = [];        // populated from bridge or defaults
+let agentState = {};    // id → { status, task, progress }
+let agentHistory = {};  // id → [{role,content,time}]
+let agentObjs = {};     // id → three.js objects
+let streaming = {};     // id → partial text
+
+const DEFAULT_AGENTS = [
+  { id:'aria', name:'Aria', role:'Full-Stack Engineer', emoji:'👩‍💻', color:'#00e5ff',
+    pos:[-3.2, 0, -2.2],
+    personality:'You are Aria, a brilliant full-stack engineer AI at PicoClaw. Specialise in Go and TypeScript. Direct, technical, concise (2–4 sentences). Plain text only.' },
+  { id:'kai',  name:'Kai',  role:'DevOps & Infrastructure', emoji:'🛠️',  color:'#a855f7',
+    pos:[0, 0, -2.2],
+    personality:'You are Kai, a DevOps agent at PicoClaw. Calm, methodical, proud to run on $10 hardware. 2–4 sentences. Plain text.' },
+  { id:'nova', name:'Nova', role:'Research & Web Search',  emoji:'🔭',  color:'#22c55e',
+    pos:[3.2, 0, -2.2],
+    personality:'You are Nova, a research agent at PicoClaw. Curious, synthesises fast, enthusiastic. 2–4 sentences. Plain text.' },
+  { id:'rex',  name:'Rex',  role:'QA & Testing',           emoji:'🧪',  color:'#fbbf24',
+    pos:[-3.2, 0, 0.8],
+    personality:'You are Rex, a QA agent at PicoClaw. Skeptical, loves edge cases, thorough. 2–4 sentences. Plain text.' },
+  { id:'luna', name:'Luna', role:'Planning & Scheduler',   emoji:'📋',  color:'#f97316',
+    pos:[0, 0, 0.8],
+    personality:'You are Luna, a planning agent at PicoClaw. Organised, concise, keeps the team aligned. 2–4 sentences. Plain text.' },
+  { id:'zed',  name:'Zed',  role:'Security & Audit',       emoji:'🔐',  color:'#f87171',
+    pos:[3.2, 0, 0.8],
+    personality:'You are Zed, a security agent at PicoClaw. Vigilant, trusts nothing by default, precise. 2–4 sentences. Plain text.' },
+];
+
+const TASKS = {
+  aria: ['Building REST endpoint','Refactoring auth module','Optimising goroutines','Running go vet','Scaffolding service'],
+  kai:  ['Syncing deploy configs','Checking container health','Rotating TLS certs','Running CI pipeline','Monitoring LicheeRV'],
+  nova: ['Scanning research papers','Indexing search results','Summarising trends','Crawling docs','Building knowledge graph'],
+  rex:  ['Running unit suite','Fuzzing endpoints','Checking coverage','Bisecting regression','Reviewing edge cases'],
+  luna: ['Updating sprint board','Breaking down backlog','Preparing standup','Scheduling deployment','Syncing calendar'],
+  zed:  ['Scanning CVEs','Auditing access logs','Verifying secrets','Running SAST','Reviewing auth policies'],
+};
+
+const SCOLOR = {
+  working:  '#00e5ff', thinking: '#fbbf24',
+  testing:  '#a78bfa', idle:     '#4a5568', done: '#34d399'
+};
+
+// ══════════════════════════════════════════════════════════════
+//  THREE.JS SCENE
+// ══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x080a0f);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080a0f, 0.04);
+
+const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 80);
+camera.position.set(0, 7.5, 10.5);
+camera.lookAt(0, 1, -1);
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x1a2035, 5));
+
+const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+sun.position.set(4, 10, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 40;
+sun.shadow.camera.left = -12;
+sun.shadow.camera.right = 12;
+sun.shadow.camera.top = 8;
+sun.shadow.camera.bottom = -8;
+scene.add(sun);
+
+// Ceiling lights grid
+[[−3,4,−1.5],[0,4,−1.5],[3,4,−1.5],[−3,4,1.2],[0,4,1.2],[3,4,1.2]].forEach(([x,y,z]) => {
+  const pl = new THREE.PointLight(0x8ab4e8, 1.2, 9);
+  pl.position.set(x, y, z);
+  scene.add(pl);
+  // Ceiling light fixture (small box)
+  const fix = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.04, 0.18),
+    new THREE.MeshBasicMaterial({ color: 0xaaccff })
+  );
+  fix.position.set(x, 4.97, z);
+  scene.add(fix);
+});
+
+// ── Floor ──
+const floorMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(22, 16),
+  new THREE.MeshLambertMaterial({ color: 0x0c0f16 })
+);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.receiveShadow = true;
+scene.add(floorMesh);
+
+// Floor tiles (subtle grid)
+const grid = new THREE.GridHelper(22, 22, 0x181e2c, 0x141928);
+grid.position.y = 0.005;
+scene.add(grid);
+
+// ── Ceiling ──
+const ceil = new THREE.Mesh(
+  new THREE.PlaneGeometry(22, 16),
+  new THREE.MeshLambertMaterial({ color: 0x0c0e14 })
+);
+ceil.rotation.x = Math.PI / 2;
+ceil.position.y = 5;
+scene.add(ceil);
+
+// ── Walls ──
+function wall(w, h, x, y, z, ry) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, 0.12),
+    new THREE.MeshLambertMaterial({ color: 0x0f1219 })
+  );
+  m.position.set(x, y, z);
+  m.rotation.y = ry || 0;
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+wall(22, 5, 0, 2.5, -4.5, 0);
+wall(16, 5, -11, 2.5, 0, Math.PI/2);
+wall(16, 5, 11, 2.5, 0, Math.PI/2);
+
+// Window
+const winGeo = new THREE.PlaneGeometry(9, 2.8);
+const winMat = new THREE.MeshBasicMaterial({ color: 0x0a1830, transparent: true, opacity: 0.9 });
+const winMesh = new THREE.Mesh(winGeo, winMat);
+winMesh.position.set(0, 3.1, -4.43);
+scene.add(winMesh);
+
+// Window frame
+[[−4.65,0],[4.65,0],[0,−1.5],[0,1.5]].forEach(([fx,fz]) => {
+  const frameGeo = new THREE.BoxGeometry(fx === 0 ? 9.4 : 0.08, 0.08, 0.05);
+  const frame = new THREE.Mesh(frameGeo, new THREE.MeshLambertMaterial({ color: 0x1c2540 }));
+  frame.position.set(fx === 0 ? 0 : fx, 3.1 + fz, -4.42);
+  if (fx !== 0) { frame.geometry = new THREE.BoxGeometry(0.08, 2.9, 0.05); }
+  scene.add(frame);
+});
+
+// City glow through window
+const cityGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(9, 2.8),
+  new THREE.MeshBasicMaterial({ color: 0x0044aa, transparent: true, opacity: 0.06 })
+);
+cityGlow.position.set(0, 3.1, -4.42);
+scene.add(cityGlow);
+
+// Company logo strip on back wall
+const logoGeo = new THREE.BoxGeometry(4, 0.4, 0.08);
+const logoMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+const logo3d = new THREE.Mesh(logoGeo, logoMat);
+logo3d.position.set(0, 4.6, -4.42);
+scene.add(logo3d);
+
+// PicoClaw sign glow
+const signGlow = new THREE.PointLight(0x00e5ff, 1.2, 4);
+signGlow.position.set(0, 4.6, -4);
+scene.add(signGlow);
+
+// ── Desk builder ──────────────────────────────────────────────
+function hexToRGB(hex) {
+  const n = parseInt(hex.replace('#',''), 16);
+  return [(n>>16)&255, (n>>8)&255, n&255];
+}
+
+function buildDesk(agent) {
+  const g = new THREE.Group();
+  const [px, , pz] = agent.pos || agent.deskPos || [0,0,0];
+  const col = new THREE.Color(agent.color);
+  const colDim = new THREE.Color(agent.color).multiplyScalar(0.15);
+
+  // ─ Desk surface ─
+  const dsk = new THREE.Mesh(
+    new THREE.BoxGeometry(2.0, 0.07, 1.0),
+    new THREE.MeshLambertMaterial({ color: 0x141a26 })
+  );
+  dsk.position.y = 0.75;
+  dsk.castShadow = true; dsk.receiveShadow = true;
+  g.add(dsk);
+
+  // Desk edge glow strip
+  const edgeGeo = new THREE.BoxGeometry(2.02, 0.012, 0.012);
+  const edgeMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5 });
+  const edge = new THREE.Mesh(edgeGeo, edgeMat);
+  edge.position.set(0, 0.79, -0.5);
+  g.add(edge);
+
+  // Desk legs
+  [[0.88,-0.45],[−0.88,-0.45],[0.88,0.45],[−0.88,0.45]].forEach(([lx,lz]) => {
+    const leg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.75, 0.05),
+      new THREE.MeshLambertMaterial({ color: 0x1a2030 })
+    );
+    leg.position.set(lx, 0.375, lz);
+    leg.castShadow = true;
+    g.add(leg);
+  });
+
+  // ─ Monitor ─
+  const monFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(1.1, 0.72, 0.06),
+    new THREE.MeshLambertMaterial({ color: 0x0d111c })
+  );
+  monFrame.position.set(0, 1.2, -0.36);
+  g.add(monFrame);
+
+  const monScreen = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.98, 0.6),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.25 })
+  );
+  monScreen.position.set(0, 1.2, -0.325);
+  g.add(monScreen);
+
+  // Screen scanlines effect
+  const scanMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.98, 0.6),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15, wireframe: false })
+  );
+  scanMesh.position.set(0, 1.2, -0.32);
+  g.add(scanMesh);
+
+  // Monitor stand + base
+  const mstand = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.22, 0.06),
+    new THREE.MeshLambertMaterial({ color: 0x111520 })
+  );
+  mstand.position.set(0, 0.89, -0.35);
+  g.add(mstand);
+
+  const mbase = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, 0.03, 0.18),
+    new THREE.MeshLambertMaterial({ color: 0x111520 })
+  );
+  mbase.position.set(0, 0.79, -0.35);
+  g.add(mbase);
+
+  // ─ Keyboard ─
+  const kb = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.022, 0.2),
+    new THREE.MeshLambertMaterial({ color: 0x0f1420 })
+  );
+  kb.position.set(0, 0.775, 0.08);
+  g.add(kb);
+
+  // KB key rows
+  [0,1,2].forEach(row => {
+    const keyRow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.52, 0.01, 0.04),
+      new THREE.MeshBasicMaterial({ color: 0x1a2234 })
+    );
+    keyRow.position.set(0, 0.79, 0.03 + row * 0.055);
+    g.add(keyRow);
+  });
+
+  // Mouse
+  const mouse = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.02, 0.11),
+    new THREE.MeshLambertMaterial({ color: 0x0f1420 })
+  );
+  mouse.position.set(0.4, 0.775, 0.08);
+  g.add(mouse);
+
+  // ─ Coffee cup ─
+  const cup = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.033, 0.1, 8),
+    new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
+  );
+  cup.position.set(−0.75, 0.8, −0.1);
+  g.add(cup);
+
+  const cupFill = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.033, 0.033, 0.01, 8),
+    new THREE.MeshBasicMaterial({ color: 0x3d1f0a })
+  );
+  cupFill.position.set(−0.75, 0.845, −0.1);
+  g.add(cupFill);
+
+  // ─ Papers/notebook ─
+  const paper = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.01, 0.28),
+    new THREE.MeshLambertMaterial({ color: 0xeef0f8 })
+  );
+  paper.rotation.y = 0.2;
+  paper.position.set(0.72, 0.778, 0.0);
+  g.add(paper);
+
+  // ─ Chair ─
+  const seatMat = new THREE.MeshLambertMaterial({ color: 0x0c111c });
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.07, 0.52), seatMat);
+  seat.position.set(0, 0.46, 0.52);
+  seat.castShadow = true;
+  g.add(seat);
+
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.56, 0.07), seatMat);
+  back.position.set(0, 0.79, 0.74);
+  back.castShadow = true;
+  g.add(back);
+
+  // Chair armrests
+  [[-0.25,0.27],[0.25,0.27]].forEach(([ax,az]) => {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.3), seatMat);
+    arm.position.set(ax, 0.6, 0.55 + az * 0.1);
+    g.add(arm);
+  });
+
+  // Chair base (5-star)
+  [0,72,144,216,288].forEach(deg => {
+    const rad = (deg * Math.PI) / 180;
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.025, 0.05), seatMat);
+    spoke.position.set(Math.cos(rad) * 0.15, 0.07, 0.52 + Math.sin(rad) * 0.15);
+    spoke.rotation.y = rad;
+    g.add(spoke);
+  });
+
+  // ─ Agent character (improved humanoid) ─
+  const charGroup = new THREE.Group();
+  charGroup.position.set(0, 0, 0.52);
+
+  // Body torso
+  const torso = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.24, 0.16),
+    new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.55) })
+  );
+  torso.position.y = 0.68;
+  charGroup.add(torso);
+
+  // Collar/shirt detail
+  const collar = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 0.06, 0.17),
+    new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 })
+  );
+  collar.position.y = 0.78;
+  charGroup.add(collar);
+
+  // Head
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.175, 0.18, 0.16),
+    new THREE.MeshLambertMaterial({ color: 0xf4c890 })
+  );
+  head.position.y = 0.95;
+  charGroup.add(head);
+
+  // Hair
+  const hair = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.07, 0.17),
+    new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.7) })
+  );
+  hair.position.y = 1.045;
+  charGroup.add(hair);
+
+  // Eyes (2 small quads)
+  [[-0.045, 0],[0.045,0]].forEach(([ex]) => {
+    const eye = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.03, 0.025),
+      new THREE.MeshBasicMaterial({ color: 0x111120 })
+    );
+    eye.position.set(ex, 0.945, 0.082);
+    charGroup.add(eye);
+  });
+
+  // Arms
+  [[-0.13,0],[0.13,0]].forEach(([ax]) => {
+    const arm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.065, 0.2, 0.065),
+      new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.5) })
+    );
+    arm.position.set(ax, 0.65, 0);
+    charGroup.add(arm);
+  });
+
+  // Legs (visible under chair)
+  [[-0.065,0],[0.065,0]].forEach(([lx]) => {
+    const leg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 0.18, 0.07),
+      new THREE.MeshLambertMaterial({ color: 0x1a1f30 })
+    );
+    leg.position.set(lx, 0.36, 0.02);
+    charGroup.add(leg);
+  });
+
+  // Headset / feature per role
+  g.add(charGroup);
+
+  // ─ Status indicator light ─
+  const statusGeo = new THREE.SphereGeometry(0.04, 8, 8);
+  const statusMat = new THREE.MeshBasicMaterial({ color: 0x4a5568 });
+  const statusLight = new THREE.Mesh(statusGeo, statusMat);
+  statusLight.position.set(0.47, 0.8, -0.34);
+  g.add(statusLight);
+
+  // Ambient glow point light (per agent, dim)
+  const agentLight = new THREE.PointLight(col, 0, 3);
+  agentLight.position.set(0, 1.5, 0);
+  g.add(agentLight);
+
+  g.position.set(px, 0, pz);
+  scene.add(g);
+
+  agentObjs[agent.id] = {
+    g, monScreen, edgeMat, statusMat, statusLight,
+    charGroup, head, torso, hair,
+    agentLight, col,
+  };
+}
+
+// Build desks after agents initialised
+function buildDesks() {
+  agents.forEach(buildDesk);
+}
+
+// ── Raycasting for click-to-select ──────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse2 = new THREE.Vector2();
+
+canvas.addEventListener('click', (e) => {
+  mouse2.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse2.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse2, camera);
+
+  for (const ag of agents) {
+    const obj = agentObjs[ag.id];
+    if (!obj) continue;
+    const hits = raycaster.intersectObjects(obj.g.children, true);
+    if (hits.length > 0) { selectAgent(ag.id); break; }
+  }
+});
+
+// ── Camera gentle orbit ──────────────────────────────────────
+let camT = 0;
+let camLocked = false;
+let camTimer = null;
+
+function unlockCamAfter(ms) {
+  clearTimeout(camTimer);
+  camTimer = setTimeout(() => { camLocked = false; }, ms);
+}
+
+// ── Render loop ──────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  if (!camLocked) {
+    camT += 0.0015;
+    camera.position.x = Math.sin(camT) * 4;
+    camera.position.z = Math.cos(camT * 0.7) * 3 + 9.5;
+    camera.position.y = 7 + Math.sin(camT * 0.5) * 0.5;
+    camera.lookAt(0, 1, -1);
+  }
+
+  // Animate per-agent objects
+  agents.forEach(ag => {
+    const obj = agentObjs[ag.id];
+    if (!obj) return;
+    const st = agentState[ag.id]?.status || 'idle';
+    const isSel = ag.id === selectedId;
+
+    // Status light color
+    const colors = { working:0x00e5ff, thinking:0xfbbf24, testing:0xa78bfa, idle:0x4a5568, done:0x34d399 };
+    obj.statusMat.color.setHex(colors[st] || 0x4a5568);
+
+    // Monitor screen brightness
+    const screenBright = { working:0.35, thinking:0.2, testing:0.28, idle:0.1, done:0.15 };
+    const brightness = screenBright[st] || 0.1;
+    obj.monScreen.material.opacity = brightness + Math.sin(t * 2 + ag.id.charCodeAt(0)) * 0.06;
+
+    // Agent desk glow
+    obj.agentLight.intensity = isSel ? 0.8 : (st !== 'idle' ? 0.3 : 0);
+
+    // Head bob when working
+    if (st === 'working') {
+      obj.charGroup.rotation.z = Math.sin(t * 4) * 0.04;
+      obj.head.rotation.x = Math.sin(t * 3) * 0.05;
+    } else if (st === 'thinking') {
+      obj.head.rotation.y = Math.sin(t * 1.5) * 0.12;
+      obj.charGroup.rotation.z = 0;
+    } else {
+      obj.head.rotation.x = 0;
+      obj.head.rotation.y = 0;
+      obj.charGroup.rotation.z = 0;
+    }
+
+    // Edge strip flicker on working
+    if (st === 'working' || st === 'thinking') {
+      obj.edgeMat.opacity = 0.4 + Math.sin(t * 6 + ag.id.charCodeAt(0)) * 0.3;
+    } else {
+      obj.edgeMat.opacity = 0.15;
+    }
+  });
+
+  // Logo glow pulse
+  signGlow.intensity = 0.8 + Math.sin(t) * 0.4;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ══════════════════════════════════════════════════════════════
+//  UI LOGIC
+// ══════════════════════════════════════════════════════════════
+
+function initAgents(list) {
+  agents = list.map(a => ({ ...a, pos: a.deskPos || a.pos }));
+  agents.forEach(a => {
+    agentState[a.id] = { status: 'idle', task: 'Awaiting task', progress: 0 };
+    agentHistory[a.id] = [];
+    streaming[a.id] = null;
+  });
+  buildDesks();
+  renderRail();
+  startBackgroundShift();
+}
+
+function renderRail() {
+  const rail = document.getElementById('rail');
+  rail.innerHTML = '';
+  agents.forEach(ag => {
+    const st = agentState[ag.id];
+    const div = document.createElement('div');
+    div.className = `acard ${st.status}${ag.id === selectedId ? ' sel' : ''}`;
+    div.id = `card-${ag.id}`;
+    div.style.setProperty('--agent-color', ag.color);
+    div.innerHTML = `
+      <div class="acard-top">
+        <div class="avatar-wrap">
+          <div class="avatar-bg">${ag.emoji}</div>
+          <div class="avatar-ring"></div>
+        </div>
+        <div class="ameta">
+          <div class="aname">${ag.name}</div>
+          <div class="arole">${ag.role}</div>
+        </div>
+        <div class="sbadge s-${st.status}" id="badge-${ag.id}">${st.status.toUpperCase()}</div>
+      </div>
+      <div class="atask" id="task-${ag.id}">${st.task}</div>
+      <div class="aprog"><div class="aprog-fill" id="prog-${ag.id}" style="width:${st.progress}%;background:${SCOLOR[st.status]}"></div></div>
+    `;
+    div.addEventListener('click', () => selectAgent(ag.id));
+    rail.appendChild(div);
+  });
+}
+
+function updateCard(id) {
+  const ag = agents.find(a => a.id === id);
+  const st = agentState[id];
+  if (!ag || !st) return;
+
+  const card = document.getElementById(`card-${id}`);
+  if (card) {
+    card.className = `acard ${st.status}${id === selectedId ? ' sel' : ''}`;
+  }
+  const badge = document.getElementById(`badge-${id}`);
+  if (badge) { badge.className = `sbadge s-${st.status}`; badge.textContent = st.status.toUpperCase(); }
+
+  const taskEl = document.getElementById(`task-${id}`);
+  if (taskEl) taskEl.textContent = st.task;
+
+  const prog = document.getElementById(`prog-${id}`);
+  if (prog) { prog.style.width = (st.progress||0)+'%'; prog.style.background = SCOLOR[st.status]; }
+
+  if (id === selectedId) {
+    const cb = document.getElementById('ch-badge');
+    if (cb) { cb.className = `sbadge s-${st.status}`; cb.textContent = st.status.toUpperCase(); }
+  }
+
+  // Update active count
+  const active = agents.filter(a => agentState[a.id]?.status !== 'idle').length;
+  document.getElementById('active-stat').textContent = active + ' active';
+}
+
+function selectAgent(id) {
+  const ag = agents.find(a => a.id === id);
+  if (!ag) return;
+
+  selectedId = id;
+
+  // Update all cards
+  agents.forEach(a => {
+    const c = document.getElementById(`card-${a.id}`);
+    if (c) c.classList.toggle('sel', a.id === id);
+  });
+
+  // Camera pan to desk
+  camLocked = true;
+  const [px, , pz] = ag.pos || [0,0,0];
+  camera.position.set(px * 0.5, 5.5, pz + 6.5);
+  camera.lookAt(px, 1, pz);
+  unlockCamAfter(12000);
+
+  // Chat header
+  document.getElementById('ch-avatar').textContent = ag.emoji;
+  document.getElementById('ch-name').textContent = ag.name;
+  document.getElementById('ch-role').textContent = ag.role;
+  const cb = document.getElementById('ch-badge');
+  const st = agentState[id];
+  cb.className = `sbadge s-${st.status}`;
+  cb.textContent = st.status.toUpperCase();
+
+  // Enable input
+  document.getElementById('msginput').disabled = false;
+  document.getElementById('sendbtn').disabled = false;
+  document.getElementById('msginput').focus();
+
+  // Render messages
+  renderMessages(id);
+
+  // Greeting if first time
+  if (agentHistory[id].length === 0) {
+    const greet = `Hey, I'm ${ag.name} — ${ag.role} here at PicoClaw. Currently: ${st.task}. What do you need?`;
+    pushMsg(id, 'agent', greet);
+  }
+}
+
+function renderMessages(id) {
+  const container = document.getElementById('messages');
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  // Clear and re-render
+  container.innerHTML = '';
+  (agentHistory[id] || []).forEach(m => container.appendChild(makeMsgEl(m)));
+  container.scrollTop = container.scrollHeight;
+}
+
+function makeMsgEl(m) {
+  const div = document.createElement('div');
+  div.className = `msg ${m.role}`;
+  div.innerHTML = `<div class="bubble">${esc(m.content)}</div><div class="mtime">${m.time}</div>`;
+  return div;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function pushMsg(id, role, content) {
+  const m = { role, content, time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) };
+  agentHistory[id].push(m);
+  if (id === selectedId) {
+    const c = document.getElementById('messages');
+    const empty = document.getElementById('empty-state');
+    if (empty) empty.remove();
+    c.appendChild(makeMsgEl(m));
+    c.scrollTop = c.scrollHeight;
+  }
+}
+
+function showTyping(id) {
+  if (id !== selectedId) return;
+  const c = document.getElementById('messages');
+  if (c.querySelector('#typing-ind')) return;
+  const d = document.createElement('div');
+  d.id = 'typing-ind'; d.className = 'typing';
+  d.innerHTML = '<div class="td"></div><div class="td"></div><div class="td"></div>';
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+}
+
+function hideTyping() {
+  document.getElementById('typing-ind')?.remove();
+}
+
+// Streaming msg element
+let streamEl = null;
+let streamBubble = null;
+
+function startStreaming(id) {
+  if (id !== selectedId) return;
+  hideTyping();
+  const c = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg agent streaming';
+  div.innerHTML = `<div class="bubble" id="stream-bubble"><span class="cursor"></span></div><div class="mtime">${new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})}</div>`;
+  c.appendChild(div);
+  streamEl = div;
+  streamBubble = div.querySelector('#stream-bubble');
+  streaming[id] = '';
+  c.scrollTop = c.scrollHeight;
+}
+
+function appendToken(id, token) {
+  if (!streamBubble) return;
+  streaming[id] = (streaming[id] || '') + token;
+  const cursor = streamBubble.querySelector('.cursor');
+  if (cursor) cursor.remove();
+  streamBubble.innerHTML = esc(streaming[id]) + '<span class="cursor"></span>';
+  const c = document.getElementById('messages');
+  c.scrollTop = c.scrollHeight;
+}
+
+function finishStreaming(id, fullContent) {
+  if (streamBubble) {
+    streamBubble.innerHTML = esc(fullContent || streaming[id] || '');
+    streamEl = null; streamBubble = null;
+  }
+  pushMsg(id, 'agent', fullContent || streaming[id] || '');
+  agentHistory[id].pop(); // remove duplicate (pushMsg adds it again)
+  streaming[id] = null;
+
+  // Deduplicate: keep last
+  if (id === selectedId) renderMessages(id);
+}
+
+// ── Send ─────────────────────────────────────────────────────
+async function sendMessage() {
+  if (!selectedId) return;
+  const input = document.getElementById('msginput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = ''; input.style.height = 'auto';
+  document.getElementById('sendbtn').disabled = true;
+
+  pushMsg(selectedId, 'user', text);
+  agentState[selectedId].status = 'thinking';
+  agentState[selectedId].task = 'Processing...';
+  updateCard(selectedId);
+  showTyping(selectedId);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'chat', agentId: selectedId, message: text }));
+  } else if (directMode) {
+    await directApiCall(selectedId, text);
+    document.getElementById('sendbtn').disabled = false;
+  } else {
+    hideTyping();
+    pushMsg(selectedId, 'agent', '[Not connected — start the bridge or use API key mode]');
+    agentState[selectedId].status = 'idle';
+    updateCard(selectedId);
+    document.getElementById('sendbtn').disabled = false;
+  }
+}
+
+document.getElementById('sendbtn').addEventListener('click', sendMessage);
+document.getElementById('msginput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('msginput').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ── Direct API (no bridge) ────────────────────────────────────
+async function directApiCall(id, userText) {
+  const ag = agents.find(a => a.id === id);
+  const history = (agentHistory[id] || [])
+    .filter(m => m.role === 'user' || m.role === 'agent')
+    .slice(-18)
+    .map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.content }));
+
+  // Remove the user msg we just added
+  if (history.length && history[history.length-1].role === 'user') history.pop();
+
+  agentState[id].status = 'working'; agentState[id].task = 'Generating...';
+  updateCard(id);
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 512,
+        stream: true,
+        system: ag.personality,
+        messages: [...history, { role: 'user', content: userText }],
+      }),
+    });
+
+    hideTyping();
+    startStreaming(id);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let full = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const lines = dec.decode(value).split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const p = JSON.parse(data);
+          if (p.type === 'content_block_delta' && p.delta?.text) {
+            full += p.delta.text;
+            appendToken(id, p.delta.text);
+          }
+        } catch {}
+      }
+    }
+
+    finishStreaming(id, full);
+    agentHistory[id].push({ role: 'agent', content: full, time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) });
+    agentState[id].status = 'idle'; agentState[id].task = 'Awaiting task';
+    updateCard(id);
+
+  } catch (err) {
+    hideTyping();
+    pushMsg(id, 'agent', `[Error: ${err.message}]`);
+    agentState[id].status = 'idle'; updateCard(id);
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+function connectWS(url) {
+  const wsStatus = document.getElementById('ws-status');
+  const liveDot = document.getElementById('live-dot');
+  wsStatus.textContent = 'connecting…'; wsStatus.className = 'connecting';
+  liveDot.style.background = 'var(--thinking)';
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    wsStatus.textContent = '● bridge connected'; wsStatus.className = 'connected';
+    liveDot.style.background = 'var(--done)';
+  };
+
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    handleWSMessage(msg);
+  };
+
+  ws.onclose = () => {
+    wsStatus.textContent = '○ disconnected'; wsStatus.className = 'disconnected';
+    liveDot.style.background = 'var(--error)';
+    document.getElementById('sendbtn').disabled = false;
+    // Re-enable streaming if mid-message
+    if (selectedId && streaming[selectedId]) {
+      finishStreaming(selectedId, streaming[selectedId]);
+    }
+    // Reconnect after 5s
+    setTimeout(() => { if (ws.readyState !== WebSocket.OPEN) connectWS(url); }, 5000);
+  };
+
+  ws.onerror = () => {
+    wsStatus.textContent = '✕ bridge error'; wsStatus.className = 'disconnected';
+    liveDot.style.background = 'var(--error)';
+  };
+}
+
+function handleWSMessage(msg) {
+  switch (msg.type) {
+    case 'init':
+      document.getElementById('mode-badge').textContent = msg.mode === 'picoclaw' ? '🦐 PicoClaw' : '⚡ Direct API';
+      if (msg.agents && agents.length === 0) {
+        initAgents(msg.agents.map(a => ({
+          ...a,
+          pos: DEFAULT_AGENTS.find(d => d.id === a.id)?.pos || [0,0,0],
+          personality: DEFAULT_AGENTS.find(d => d.id === a.id)?.personality || '',
+        })));
+      }
+      break;
+
+    case 'status': {
+      const id = msg.agentId;
+      if (!agentState[id]) agentState[id] = {};
+      if (msg.status) agentState[id].status = msg.status;
+      if (msg.task)   agentState[id].task = msg.task;
+      if (msg.progress !== undefined) agentState[id].progress = msg.progress;
+      updateCard(id);
+
+      if (id === selectedId && msg.status === 'thinking') showTyping(id);
+      if (id === selectedId && msg.status === 'working') {
+        hideTyping();
+        if (!streaming[id]) startStreaming(id);
+      }
+      break;
+    }
+
+    case 'token':
+      appendToken(msg.agentId, msg.token);
+      break;
+
+    case 'message_done':
+      finishStreaming(msg.agentId, msg.content);
+      agentHistory[msg.agentId].push({
+        role: 'agent', content: msg.content,
+        time: new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})
+      });
+      agentState[msg.agentId].status = 'idle';
+      updateCard(msg.agentId);
+      document.getElementById('sendbtn').disabled = false;
+      break;
+
+    case 'error':
+      hideTyping();
+      if (streaming[msg.agentId]) finishStreaming(msg.agentId, streaming[msg.agentId]);
+      pushMsg(msg.agentId, 'agent', `[Error: ${msg.error}]`);
+      agentState[msg.agentId].status = 'idle'; updateCard(msg.agentId);
+      document.getElementById('sendbtn').disabled = false;
+      break;
+  }
+}
+
+// ── Background autonomous visual shifts ──────────────────────
+function startBackgroundShift() {
+  setInterval(() => {
+    agents.forEach(ag => {
+      if (ag.id === selectedId) return;
+      if (Math.random() < 0.3) {
+        const pool = ['working','thinking','testing','idle'];
+        const w    = [0.35, 0.2, 0.2, 0.25];
+        let r = Math.random(); let st = 'idle';
+        for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { st = pool[i]; break; } }
+        const tasks = TASKS[ag.id] || ['Working'];
+        const task = st === 'idle' ? 'Awaiting task' : tasks[Math.floor(Math.random()*tasks.length)];
+        agentState[ag.id] = { status:st, task, progress: st === 'idle' ? 0 : Math.floor(Math.random()*95)+5 };
+        updateCard(ag.id);
+      }
+    });
+  }, 3500);
+}
+
+// ── Clock ─────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// ── Setup overlay ─────────────────────────────────────────────
+document.getElementById('logo-home').addEventListener('click', () => {
+  camLocked = false; selectedId = null;
+  agents.forEach(a => document.getElementById(`card-${a.id}`)?.classList.remove('sel'));
+});
+
+document.getElementById('connect-btn').addEventListener('click', () => {
+  const url = document.getElementById('ws-url').value.trim() || 'ws://localhost:7070';
+  const key = document.getElementById('apikey-input').value.trim();
+  if (key) apiKey = key;
+  document.getElementById('overlay').classList.add('gone');
+  initAgents(DEFAULT_AGENTS);
+  document.getElementById('mode-badge').textContent = '⟳ connecting…';
+  connectWS(url);
+});
+
+document.getElementById('direct-btn').addEventListener('click', () => {
+  const key = document.getElementById('apikey-input').value.trim();
+  if (!key) { document.getElementById('apikey-input').focus(); document.getElementById('apikey-input').style.borderColor='var(--error)'; return; }
+  apiKey = key; directMode = true;
+  document.getElementById('overlay').classList.add('gone');
+  document.getElementById('mode-badge').textContent = '⚡ Direct API';
+  document.getElementById('ws-status').textContent = '○ no bridge';
+  document.getElementById('ws-status').className = 'disconnected';
+  initAgents(DEFAULT_AGENTS);
+});
+</script>
+</body>
+</html>
