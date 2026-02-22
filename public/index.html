@@ -6,406 +6,185 @@
 <title>PicoClaw Office</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800;900&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;900&display=swap');
 :root {
-  --bg: #080a0f;
-  --surface: #0e1118;
-  --surface2: #141820;
-  --border: #1c2234;
-  --border2: #242d42;
-  --accent: #00e5ff;
-  --accent-dim: rgba(0,229,255,0.08);
-  --text: #dde4f0;
-  --muted: #4a5568;
-  --muted2: #64748b;
-  --working: #00e5ff;
-  --thinking: #fbbf24;
-  --testing: #a78bfa;
-  --idle: #4a5568;
-  --done: #34d399;
-  --error: #f87171;
-  --font-mono: 'Space Mono', monospace;
-  --font-display: 'Syne', sans-serif;
+  --bg:#080a0f; --surface:#0e1118; --surface2:#141820;
+  --border:#1c2234; --border2:#242d42;
+  --accent:#00e5ff; --text:#dde4f0; --muted:#4a5568; --muted2:#64748b;
+  --working:#00e5ff; --thinking:#fbbf24; --testing:#a78bfa;
+  --idle:#4a5568; --done:#34d399; --error:#f87171;
+  --fm:'Space Mono',monospace; --fd:'Syne',sans-serif;
 }
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--fm);}
+#c{position:fixed;inset:0;z-index:0;}
+#hud{position:fixed;inset:0;z-index:10;pointer-events:none;}
+.bracket{position:absolute;width:20px;height:20px;border-color:rgba(0,229,255,.25);border-style:solid;}
+.bracket-tl{top:10px;left:10px;border-width:1px 0 0 1px;}
+.bracket-tr{top:10px;right:10px;border-width:1px 1px 0 0;}
+.bracket-bl{bottom:10px;left:10px;border-width:0 0 1px 1px;}
+.bracket-br{bottom:10px;right:10px;border-width:0 1px 1px 0;}
 
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--font-mono); }
+/* topbar */
+#topbar{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:rgba(8,10,15,.97);border-bottom:1px solid var(--border);pointer-events:all;}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-weight:900;font-size:16px;cursor:pointer;user-select:none;}
+.logo-badge{background:linear-gradient(135deg,#00e5ff,#7c3aed);border-radius:7px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;}
+.logo span{color:var(--muted2);font-weight:400;font-size:12px;margin-left:2px;}
+.topbar-mid{display:flex;align-items:center;gap:14px;font-size:10px;color:var(--muted2);}
+#mode-badge{padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid rgba(0,229,255,.25);color:var(--accent);background:rgba(0,229,255,.06);}
+#live-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:background .3s;}
+#live-dot.on{background:var(--done);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#ws-status{font-size:10px;}
+#ws-status.ok{color:var(--done);}
+#ws-status.err{color:var(--error);}
+#ws-status.wait{color:var(--thinking);}
+#clock{font-size:11px;color:var(--accent);letter-spacing:1px;}
 
-/* ─── canvas ─── */
-#c { position:fixed; inset:0; z-index:0; }
+/* chat pane */
+#chatpane{position:absolute;top:50px;left:0;bottom:0;width:360px;display:flex;flex-direction:column;background:linear-gradient(90deg,rgba(8,10,15,.95) 75%,transparent);pointer-events:all;}
+#chat-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+#ch-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;background:var(--surface2);border:1.5px solid var(--border2);flex-shrink:0;}
+#ch-name{font-family:var(--fd);font-weight:700;font-size:13px;}
+#ch-role{font-size:10px;color:var(--muted2);margin-top:1px;}
+#ch-badge{margin-left:auto;flex-shrink:0;}
+#messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+#empty-msg{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px;color:var(--muted);text-align:center;padding:20px;font-size:11px;line-height:1.8;}
+#empty-msg .ei{font-size:40px;opacity:.25;}
+.msg{display:flex;flex-direction:column;gap:3px;max-width:88%;animation:mi .15s ease-out;}
+.msg.user{align-self:flex-end;align-items:flex-end;}
+.msg.agent{align-self:flex-start;}
+@keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.bubble{padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.65;word-break:break-word;}
+.msg.user .bubble{background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.2);border-bottom-right-radius:2px;}
+.msg.agent .bubble{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:2px;}
+.mtime{font-size:9px;color:var(--muted);}
+.typing{align-self:flex-start;display:flex;gap:4px;padding:9px 13px;background:var(--surface);border:1px solid var(--border);border-radius:10px;border-bottom-left-radius:2px;}
+.td{width:5px;height:5px;border-radius:50%;background:var(--muted2);animation:td 1.2s infinite;}
+.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
+.cursor{display:inline-block;width:2px;height:12px;background:var(--accent);margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+#input-row{padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:7px;align-items:flex-end;}
+#msginput{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-family:var(--fm);font-size:12px;resize:none;outline:none;line-height:1.55;max-height:100px;transition:border-color .2s;}
+#msginput:focus{border-color:rgba(0,229,255,.4);}
+#msginput:disabled{opacity:.35;cursor:not-allowed;}
+#sendbtn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:9px 14px;font-family:var(--fd);font-size:12px;font-weight:900;cursor:pointer;white-space:nowrap;transition:all .15s;}
+#sendbtn:hover:not(:disabled){background:#33eaff;}
+#sendbtn:disabled{opacity:.35;cursor:not-allowed;}
 
-/* ─── HUD shell ─── */
-#hud { position:fixed; inset:0; z-index:10; pointer-events:none; }
+/* rail */
+#rail{position:absolute;top:50px;right:0;bottom:0;width:300px;overflow-y:auto;pointer-events:all;padding:9px 9px 9px 5px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(270deg,rgba(8,10,15,.95) 70%,transparent);scrollbar-width:none;}
+.acard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden;}
+.acard::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px;background:var(--idle);transition:all .3s;}
+.acard.working::after{background:var(--working);box-shadow:0 0 8px var(--working);}
+.acard.thinking::after{background:var(--thinking);box-shadow:0 0 8px var(--thinking);}
+.acard.testing::after{background:var(--testing);box-shadow:0 0 8px var(--testing);}
+.acard.done::after{background:var(--done);}
+.acard:hover{border-color:var(--border2);transform:translateX(-2px);}
+.acard.sel{border-color:rgba(0,229,255,.4);background:rgba(0,229,255,.03);transform:translateX(-2px);}
+.acard-top{display:flex;align-items:center;gap:9px;margin-bottom:6px;}
+.avatar-bg{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;background:var(--surface2);border:2px solid var(--border2);flex-shrink:0;}
+.ameta{flex:1;min-width:0;}
+.aname{font-family:var(--fd);font-weight:700;font-size:12px;}
+.arole{font-size:9px;color:var(--muted2);margin-top:1px;}
+.sbadge{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:20px;border:1px solid;flex-shrink:0;}
+.s-working{color:var(--working);border-color:rgba(0,229,255,.3);background:rgba(0,229,255,.07);}
+.s-thinking{color:var(--thinking);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.07);}
+.s-testing{color:var(--testing);border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.07);}
+.s-idle{color:var(--muted2);border-color:rgba(74,85,104,.3);background:rgba(74,85,104,.07);}
+.s-done{color:var(--done);border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.07);}
+.atask{font-size:10px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px;}
+.aprog{height:2px;background:var(--border);border-radius:1px;overflow:hidden;}
+.aprog-fill{height:100%;border-radius:1px;transition:width .5s ease,background .3s;}
 
-/* scanlines */
-#hud::after {
-  content:''; position:absolute; inset:0; pointer-events:none;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
-}
+/* floor label */
+#floorlabel{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;pointer-events:none;white-space:nowrap;}
 
-/* corner brackets */
-.bracket {
-  position:absolute; width:22px; height:22px;
-  border-color:rgba(0,229,255,0.3); border-style:solid;
-}
-.bracket-tl { top:10px; left:10px; border-width:1px 0 0 1px; }
-.bracket-tr { top:10px; right:10px; border-width:1px 1px 0 0; }
-.bracket-bl { bottom:10px; left:10px; border-width:0 0 1px 1px; }
-.bracket-br { bottom:10px; right:10px; border-width:0 1px 1px 0; }
-
-/* ─── TOP BAR ─── */
-#topbar {
-  position:absolute; top:0; left:0; right:0;
-  height:52px; display:flex; align-items:center; justify-content:space-between;
-  padding:0 20px;
-  background:linear-gradient(180deg,rgba(8,10,15,0.98) 0%,rgba(8,10,15,0.7) 100%);
-  border-bottom:1px solid var(--border);
-  pointer-events:all;
-}
-
-.logo {
-  display:flex; align-items:center; gap:10px;
-  font-family:var(--font-display); font-weight:900; font-size:17px;
-  letter-spacing:-0.3px; cursor:pointer; user-select:none;
-}
-.logo-badge {
-  background:linear-gradient(135deg,#00e5ff,#7c3aed);
-  border-radius:7px; width:30px; height:30px;
-  display:flex; align-items:center; justify-content:center;
-  font-size:16px; filter:drop-shadow(0 0 6px rgba(0,229,255,0.4));
-}
-.logo span { color:var(--muted2); font-weight:400; font-size:13px; margin-left:2px; }
-
-.topbar-center {
-  display:flex; align-items:center; gap:16px; font-size:11px; color:var(--muted2);
-}
-
-#mode-badge {
-  padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700;
-  letter-spacing:0.5px; text-transform:uppercase;
-  border:1px solid rgba(0,229,255,0.25); color:var(--accent);
-  background:rgba(0,229,255,0.06);
-}
-
-.topbar-right {
-  display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted2);
-}
-
-.live-dot {
-  width:6px; height:6px; border-radius:50%; background:var(--done);
-  animation: livePulse 2s ease-in-out infinite;
-}
-@keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
-
-#ws-status { font-size:10px; }
-#ws-status.connected { color:var(--done); }
-#ws-status.disconnected { color:var(--error); }
-#ws-status.connecting { color:var(--thinking); }
-
-/* ─── AGENT RAIL (right) ─── */
-#rail {
-  position:absolute; top:52px; right:0; bottom:0;
-  width:310px; overflow-y:auto; pointer-events:all;
-  padding:10px 10px 10px 6px;
-  display:flex; flex-direction:column; gap:7px;
-  background:linear-gradient(270deg,rgba(8,10,15,0.92) 60%,transparent);
-  scrollbar-width:none;
-}
-#rail::-webkit-scrollbar { display:none; }
-
-.acard {
-  background:var(--surface); border:1px solid var(--border);
-  border-radius:11px; padding:11px 13px;
-  cursor:pointer; transition:all 0.18s;
-  position:relative; overflow:hidden;
-}
-.acard::after {
-  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
-  background:var(--idle); border-radius:3px 0 0 3px; transition:all 0.3s;
-}
-.acard.working::after  { background:var(--working); box-shadow:0 0 10px var(--working); }
-.acard.thinking::after { background:var(--thinking); box-shadow:0 0 10px var(--thinking); }
-.acard.testing::after  { background:var(--testing); box-shadow:0 0 10px var(--testing); }
-.acard.done::after     { background:var(--done); }
-.acard.idle::after     { background:var(--idle); }
-
-.acard:hover { border-color:var(--border2); transform:translateX(-3px); }
-.acard.sel   { border-color:rgba(0,229,255,0.35); background:rgba(0,229,255,0.03); transform:translateX(-3px); }
-
-.acard-top { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
-
-.avatar-wrap {
-  position:relative; flex-shrink:0;
-  width:38px; height:38px;
-}
-.avatar-bg {
-  width:38px; height:38px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:18px; border:2px solid var(--border2);
-  background:var(--surface2);
-}
-.avatar-ring {
-  position:absolute; inset:-3px; border-radius:50%;
-  border:2px solid transparent;
-  background:linear-gradient(var(--surface),var(--surface)) padding-box,
-             linear-gradient(135deg,var(--agent-color),transparent 60%) border-box;
-  opacity:0; transition:opacity 0.3s;
-}
-.acard.working .avatar-ring,
-.acard.thinking .avatar-ring { opacity:1; animation:ringRotate 3s linear infinite; }
-@keyframes ringRotate { to { transform:rotate(360deg); } }
-
-.ameta { flex:1; min-width:0; }
-.aname { font-family:var(--font-display); font-weight:700; font-size:13px; line-height:1.2; }
-.arole { font-size:10px; color:var(--muted2); margin-top:2px; }
-
-.sbadge {
-  flex-shrink:0; font-size:9px; font-weight:700;
-  letter-spacing:0.6px; text-transform:uppercase;
-  padding:2px 8px; border-radius:20px; border:1px solid;
-}
-.s-working  { color:var(--working); border-color:rgba(0,229,255,.3); background:rgba(0,229,255,.07); }
-.s-thinking { color:var(--thinking); border-color:rgba(251,191,36,.3); background:rgba(251,191,36,.07); }
-.s-testing  { color:var(--testing); border-color:rgba(167,139,250,.3); background:rgba(167,139,250,.07); }
-.s-idle     { color:var(--muted2); border-color:rgba(74,85,104,.3); background:rgba(74,85,104,.07); }
-.s-done     { color:var(--done); border-color:rgba(52,211,153,.3); background:rgba(52,211,153,.07); }
-
-.atask { font-size:10px; color:var(--muted2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:7px; }
-
-.aprog { height:2px; background:var(--border); border-radius:1px; overflow:hidden; }
-.aprog-fill { height:100%; border-radius:1px; transition:width .6s ease,background .3s; }
-
-/* ─── CHAT PANE (left) ─── */
-#chatpane {
-  position:absolute; top:52px; left:0; bottom:0;
-  width:370px; display:flex; flex-direction:column;
-  pointer-events:all;
-  background:linear-gradient(90deg,rgba(8,10,15,0.95) 70%,transparent);
-  padding:0;
-}
-
-#chat-head {
-  padding:14px 16px 12px;
-  border-bottom:1px solid var(--border);
-  display:flex; align-items:center; gap:12px;
-}
-
-#ch-avatar {
-  width:36px; height:36px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:18px; background:var(--surface2); border:1.5px solid var(--border2);
-  flex-shrink:0;
-}
-#ch-name { font-family:var(--font-display); font-weight:700; font-size:14px; }
-#ch-role { font-size:10px; color:var(--muted2); margin-top:1px; }
-#ch-badge { margin-left:auto; flex-shrink:0; }
-#ch-source { font-size:9px; color:var(--muted); margin-left:8px; }
-
-#messages {
-  flex:1; overflow-y:auto; padding:14px 14px 8px;
-  display:flex; flex-direction:column; gap:10px;
-  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
-}
-
-#empty-state {
-  flex:1; display:flex; flex-direction:column;
-  align-items:center; justify-content:center;
-  gap:12px; color:var(--muted); text-align:center;
-  padding:24px;
-}
-#empty-state .ei { font-size:44px; opacity:.3; }
-#empty-state p  { font-size:11px; line-height:1.9; }
-
-.msg { display:flex; flex-direction:column; gap:3px; max-width:88%; animation:msgIn 0.18s ease-out; }
-.msg.user  { align-self:flex-end; align-items:flex-end; }
-.msg.agent { align-self:flex-start; }
-
-@keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-
-.bubble {
-  padding:9px 13px; border-radius:11px; font-size:12px; line-height:1.65;
-  word-break:break-word;
-}
-.msg.user  .bubble { background:rgba(0,229,255,.1); border:1px solid rgba(0,229,255,.2); border-bottom-right-radius:2px; }
-.msg.agent .bubble { background:var(--surface); border:1px solid var(--border); border-bottom-left-radius:2px; }
-.msg.agent.streaming .bubble { border-color:var(--border2); }
-
-.mtime { font-size:9px; color:var(--muted); }
-
-.typing {
-  align-self:flex-start; display:flex; gap:4px;
-  padding:10px 14px; background:var(--surface);
-  border:1px solid var(--border); border-radius:11px;
-  border-bottom-left-radius:2px; animation:msgIn 0.18s ease-out;
-}
-.td {
-  width:5px; height:5px; border-radius:50%; background:var(--muted2);
-  animation:tdPop 1.2s infinite;
-}
-.td:nth-child(2){animation-delay:.2s} .td:nth-child(3){animation-delay:.4s}
-@keyframes tdPop { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-5px);opacity:1} }
-
-.cursor { display:inline-block; width:2px; height:13px; background:var(--accent); margin-left:2px; vertical-align:middle; animation:blink .7s step-end infinite; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-
-#input-row {
-  padding:12px 14px;
-  border-top:1px solid var(--border);
-  display:flex; gap:8px; align-items:flex-end;
-}
-
-#msginput {
-  flex:1; background:var(--surface); border:1px solid var(--border);
-  color:var(--text); border-radius:9px; padding:10px 13px;
-  font-family:var(--font-mono); font-size:12px; resize:none;
-  outline:none; line-height:1.55; max-height:120px;
-  transition:border-color .2s;
-}
-#msginput:focus { border-color:rgba(0,229,255,.4); }
-#msginput:disabled { opacity:.4; cursor:not-allowed; }
-
-#sendbtn {
-  background:var(--accent); color:#000; border:none; border-radius:9px;
-  padding:10px 16px; font-family:var(--font-display); font-size:12px; font-weight:800;
-  cursor:pointer; white-space:nowrap; transition:all .2s;
-  letter-spacing:0.2px;
-}
-#sendbtn:hover:not(:disabled) { background:#33eaff; transform:translateY(-1px); }
-#sendbtn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
-
-/* ─── floor label ─── */
-#floorlabel {
-  position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
-  font-size:9px; color:var(--muted); letter-spacing:2px;
-  text-transform:uppercase; pointer-events:none; white-space:nowrap;
-}
-
-/* ─── SETUP OVERLAY ─── */
-#overlay {
-  position:fixed; inset:0; z-index:100;
-  background:radial-gradient(ellipse at center, #0d1021 0%, #080a0f 100%);
-  display:flex; align-items:center; justify-content:center;
-}
-#overlay.gone { display:none; }
-
-.setup-card {
-  background:var(--surface); border:1px solid var(--border2);
-  border-radius:18px; padding:36px 32px; max-width:440px; width:calc(100% - 40px);
-  text-align:center;
-}
-.setup-logo { font-size:52px; margin-bottom:16px; filter:drop-shadow(0 0 20px rgba(0,229,255,0.3)); }
-.setup-card h1 { font-family:var(--font-display); font-weight:900; font-size:26px; margin-bottom:8px; }
-.setup-card .sub { font-size:12px; color:var(--muted2); line-height:1.8; margin-bottom:24px; }
-
-.setup-field { margin-bottom:12px; text-align:left; }
-.setup-field label { display:block; font-size:10px; color:var(--muted2); margin-bottom:5px; letter-spacing:.5px; text-transform:uppercase; }
-.setup-field input {
-  width:100%; background:var(--bg); border:1px solid var(--border2);
-  color:var(--text); border-radius:9px; padding:11px 14px;
-  font-family:var(--font-mono); font-size:12px; outline:none;
-  transition:border-color .2s;
-}
-.setup-field input:focus { border-color:rgba(0,229,255,.45); }
-
-.setup-btns { display:flex; flex-direction:column; gap:9px; margin-top:20px; }
-.btn-primary {
-  width:100%; background:linear-gradient(135deg,var(--accent),#7c3aed);
-  color:#fff; border:none; border-radius:10px;
-  padding:13px; font-family:var(--font-display); font-weight:800;
-  font-size:14px; cursor:pointer; transition:all .2s; letter-spacing:.2px;
-}
-.btn-primary:hover { transform:translateY(-1px); filter:brightness(1.1); }
-.btn-secondary {
-  width:100%; background:transparent;
-  color:var(--muted2); border:1px solid var(--border2); border-radius:10px;
-  padding:11px; font-family:var(--font-display); font-weight:700;
-  font-size:13px; cursor:pointer; transition:all .2s;
-}
-.btn-secondary:hover { border-color:var(--border2); color:var(--text); }
-.setup-note { font-size:10px; color:var(--muted); margin-top:14px; line-height:1.7; }
-
-.tag {
-  display:inline-block; font-size:9px; padding:2px 7px;
-  border-radius:4px; background:var(--surface2);
-  border:1px solid var(--border); color:var(--muted2); margin:2px;
-}
-
-.tab-btn {
-  flex:1; background:transparent; border:none; color:var(--muted2);
-  padding:7px 6px; border-radius:6px; cursor:pointer;
-  font-family:var(--font-mono); font-size:10px; transition:all .15s;
-}
-.tab-btn.active { background:var(--surface2); color:var(--text); }
-.tab-btn:hover:not(.active) { color:var(--text); }
+/* overlay */
+#overlay{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at 50% 40%,#0d1021,#080a0f);display:flex;align-items:center;justify-content:center;}
+#overlay.gone{display:none;}
+.setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:32px 28px;max-width:420px;width:calc(100% - 32px);text-align:center;}
+.setup-card h1{font-family:var(--fd);font-weight:900;font-size:24px;margin-bottom:6px;}
+.setup-card .sub{font-size:11px;color:var(--muted2);line-height:1.8;margin-bottom:20px;}
+.tabs{display:flex;gap:5px;background:var(--bg);border-radius:8px;padding:3px;margin-bottom:16px;}
+.tab{flex:1;background:transparent;border:none;color:var(--muted2);padding:7px 4px;border-radius:6px;cursor:pointer;font-family:var(--fm);font-size:10px;transition:all .15s;}
+.tab.on{background:var(--surface2);color:var(--text);}
+.pane{display:none;text-align:left;}
+.pane.on{display:block;}
+.field{margin-bottom:11px;}
+.field label{display:block;font-size:9px;color:var(--muted2);margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase;}
+.field input{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--fm);font-size:12px;outline:none;transition:border-color .2s;}
+.field input:focus{border-color:rgba(0,229,255,.4);}
+.field input.err{border-color:var(--error);}
+.hint{font-size:10px;color:var(--muted);line-height:1.7;margin-bottom:12px;}
+.hint code{color:var(--accent);}
+.btn-p{width:100%;background:linear-gradient(135deg,#00e5ff,#7c3aed);color:#fff;border:none;border-radius:9px;padding:12px;font-family:var(--fd);font-weight:900;font-size:13px;cursor:pointer;transition:all .15s;margin-top:4px;}
+.btn-p:hover{filter:brightness(1.1);}
+.btn-s{width:100%;background:transparent;color:var(--muted2);border:1px solid var(--border2);border-radius:9px;padding:10px;font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer;transition:all .15s;margin-top:6px;}
+.btn-s:hover{color:var(--text);}
+#ollama-check-result{font-size:10px;min-height:16px;margin-bottom:8px;}
+.chips{margin-top:14px;}
+.chip{display:inline-block;font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--muted2);margin:2px;}
 </style>
 </head>
 <body>
 
-<!-- Setup overlay -->
+<!-- OVERLAY -->
 <div id="overlay">
   <div class="setup-card">
-    <div class="setup-logo">🦐</div>
+    <div style="font-size:44px;margin-bottom:12px">🦐</div>
     <h1>PicoClaw Office</h1>
-    <p class="sub">Real AI agents in a 3D workspace. Works with PicoClaw, Anthropic API, or <strong>Ollama (free, no key needed)</strong>.</p>
+    <p class="sub">Real AI agents in a live 3D workspace.<br>Choose how to connect:</p>
 
-    <!-- Tab switcher -->
-    <div style="display:flex;gap:6px;margin-bottom:18px;background:var(--bg);border-radius:9px;padding:4px;">
-      <button class="tab-btn active" id="tab-bridge" onclick="showTab('bridge')">Bridge / Docker</button>
-      <button class="tab-btn" id="tab-direct" onclick="showTab('direct')">API Key Only</button>
-      <button class="tab-btn" id="tab-ollama" onclick="showTab('ollama')">🦙 Ollama (free)</button>
+    <div class="tabs">
+      <button class="tab on" id="tab-bridge" onclick="showTab('bridge')">🔌 Bridge</button>
+      <button class="tab" id="tab-key"    onclick="showTab('key')">🔑 API Key</button>
+      <button class="tab" id="tab-ollama" onclick="showTab('ollama')">🦙 Ollama</button>
     </div>
 
-    <!-- Bridge tab -->
-    <div id="pane-bridge">
-      <div class="setup-field">
-        <label>Bridge URL (WebSocket)</label>
-        <input id="ws-url" type="text" value="ws://localhost:7070" placeholder="ws://localhost:7070">
+    <!-- Bridge pane -->
+    <div class="pane on" id="pane-bridge">
+      <div class="field">
+        <label>WebSocket URL</label>
+        <input id="ws-url" value="ws://localhost:8080/ws" placeholder="ws://localhost:8080/ws">
       </div>
-      <p class="setup-note" style="text-align:left;margin-bottom:14px">
-        Start bridge first: <code style="color:var(--accent)">./launch.sh</code> or <code style="color:var(--accent)">./launch.sh node</code><br>
-        Bridge auto-detects PicoClaw → Anthropic → Ollama.
-      </p>
-      <button class="btn-primary" id="connect-btn">Connect to Bridge →</button>
+      <p class="hint">Start bridge: <code>./launch.sh</code> or <code>./launch.sh node</code><br>Docker: use <code>ws://localhost:8080/ws</code> (proxied)<br>Node: use <code>ws://localhost:7070</code> (direct)</p>
+      <button class="btn-p" id="btn-bridge">Connect to Bridge →</button>
     </div>
 
-    <!-- Direct API tab -->
-    <div id="pane-direct" style="display:none">
-      <div class="setup-field">
+    <!-- API Key pane -->
+    <div class="pane" id="pane-key">
+      <div class="field">
         <label>Anthropic API Key</label>
-        <input id="apikey-input" type="password" placeholder="sk-ant-api03-...">
+        <input id="inp-key" type="password" placeholder="sk-ant-api03-…">
       </div>
-      <p class="setup-note" style="text-align:left;margin-bottom:14px">
-        Calls Anthropic directly from your browser. No bridge needed.<br>
-        Get a key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a>
-      </p>
-      <button class="btn-primary" id="direct-btn">Launch with API Key →</button>
+      <p class="hint">Calls Claude directly from your browser. No bridge needed.<br>
+      Get a key at <code>console.anthropic.com</code></p>
+      <button class="btn-p" id="btn-key">Launch with API Key →</button>
     </div>
 
-    <!-- Ollama tab -->
-    <div id="pane-ollama" style="display:none">
-      <div class="setup-field">
+    <!-- Ollama pane -->
+    <div class="pane" id="pane-ollama">
+      <div class="field">
         <label>Ollama URL</label>
-        <input id="ollama-url-input" type="text" value="http://localhost:11434" placeholder="http://localhost:11434">
+        <input id="inp-ollama-url" value="http://localhost:11434">
       </div>
-      <div class="setup-field">
-        <label>Model <span style="color:var(--muted);font-weight:400">(leave blank to auto-detect)</span></label>
-        <input id="ollama-model-input" type="text" placeholder="llama3, mistral, gemma2…">
+      <div class="field">
+        <label>Model <span style="color:var(--muted);font-weight:400">(blank = auto)</span></label>
+        <input id="inp-ollama-model" placeholder="llama3, mistral, gemma2…">
       </div>
-      <div id="ollama-status" style="font-size:11px;color:var(--muted2);margin-bottom:14px;min-height:18px"></div>
-      <button class="btn-secondary" id="ollama-check-btn" style="margin-bottom:8px;width:100%">Check Ollama connection</button>
-      <button class="btn-primary" id="ollama-btn">Launch with Ollama →</button>
-      <p class="setup-note" style="margin-top:12px">
-        Install Ollama: <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com</a><br>
-        Then: <code style="color:var(--accent)">ollama pull llama3</code>
-      </p>
+      <div id="ollama-check-result"></div>
+      <button class="btn-s" id="btn-ollama-check">Check connection</button>
+      <button class="btn-p" id="btn-ollama">Launch with Ollama →</button>
+      <p class="hint" style="margin-top:10px">Install: <code>ollama.com</code> then <code>ollama pull llama3</code></p>
     </div>
 
-    <div style="margin-top:16px">
-      <span class="tag">PicoClaw v0.0.1</span>
-      <span class="tag">&lt;10MB RAM</span>
-      <span class="tag">RISC-V · ARM · x86</span>
-      <span class="tag">Ollama · Anthropic</span>
+    <div class="chips">
+      <span class="chip">PicoClaw v0.0.1</span>
+      <span class="chip">&lt;10MB RAM</span>
+      <span class="chip">RISC-V · ARM · x86</span>
+      <span class="chip">Ollama · Anthropic</span>
     </div>
   </div>
 </div>
@@ -418,36 +197,32 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); col
   <div class="bracket bracket-br"></div>
 
   <div id="topbar">
-    <div class="logo" id="logo-home">
+    <div class="logo" id="logo-btn">
       <div class="logo-badge">🦐</div>
       PicoClaw <span>// office</span>
     </div>
-    <div class="topbar-center">
-      <div class="live-dot" id="live-dot" style="background:var(--muted)"></div>
-      <div id="ws-status" class="connecting">connecting...</div>
+    <div class="topbar-mid">
+      <div id="live-dot"></div>
+      <div id="ws-status" class="wait">—</div>
       <div id="mode-badge">—</div>
       <div id="active-stat" style="font-size:10px;color:var(--muted2)">0 active</div>
     </div>
-    <div class="topbar-right">
-      <div id="clock" style="font-size:11px;color:var(--accent);letter-spacing:1px">00:00:00</div>
-    </div>
+    <div id="clock">00:00:00</div>
   </div>
 
-  <!-- Chat pane -->
   <div id="chatpane">
     <div id="chat-head">
       <div id="ch-avatar">?</div>
       <div>
-        <div id="ch-name">Select an agent</div>
-        <div id="ch-role">Click a card or desk to chat</div>
+        <div id="ch-name" style="font-family:var(--fd);font-weight:700;font-size:13px">Select an agent</div>
+        <div id="ch-role" style="font-size:10px;color:var(--muted2)">Click a card or desk</div>
       </div>
       <div id="ch-badge" class="sbadge s-idle">IDLE</div>
-      <div id="ch-source"></div>
     </div>
     <div id="messages">
-      <div id="empty-state">
+      <div id="empty-msg">
         <div class="ei">🤖</div>
-        <p>Select any agent from the panel<br>to open a real-time conversation.<br><br>Agents are powered by PicoClaw +<br>Claude and respond in character.</p>
+        Select any agent to start<br>a real conversation
       </div>
     </div>
     <div id="input-row">
@@ -456,759 +231,519 @@ html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); col
     </div>
   </div>
 
-  <!-- Agent rail -->
   <div id="rail"></div>
-
   <div id="floorlabel">PicoClaw Office · Agent Workspace · v0.0.1</div>
 </div>
 
 <canvas id="c"></canvas>
 
 <script>
-// ══════════════════════════════════════════════════════════════
-//  GLOBAL STATE — all declared up front to avoid ReferenceErrors
-// ══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// ALL STATE UP FRONT
+// ═══════════════════════════════════════════════════
 let ws          = null;
+let wsUrl       = 'ws://localhost:8080/ws';
+let mode        = 'none';   // 'bridge' | 'anthropic' | 'ollama'
 let apiKey      = '';
-let directMode  = false;
-let ollamaMode  = false;
 let ollamaBase  = 'http://localhost:11434';
 let ollamaModel = 'llama3';
 let selectedId  = null;
 let agents      = [];
-let agentState  = {};   // id → {status, task, progress}
-let agentHistory= {};   // id → [{role,content,time}]
-let agentObjs   = {};   // id → three.js handles
-let streaming   = {};   // id → partial text string | null
-let streamEl    = null;
+let agentState  = {};
+let agentHistory= {};
+let agentObjs   = {};
+let streamText  = {};
 let streamBubble= null;
+let camT=0, camLocked=false, camTimer=null;
+
+const SCOLOR = {working:'#00e5ff',thinking:'#fbbf24',testing:'#a78bfa',idle:'#4a5568',done:'#34d399'};
 
 const DEFAULT_AGENTS = [
-  { id:'aria', name:'Aria', role:'Full-Stack Engineer',    emoji:'👩‍💻', color:'#00e5ff', pos:[-3.2,0,-2.2],
-    personality:'You are Aria, a brilliant full-stack engineer AI at PicoClaw. Specialise in Go and TypeScript. Direct, technical, concise (2-4 sentences). Plain text only.' },
-  { id:'kai',  name:'Kai',  role:'DevOps & Infrastructure',emoji:'🛠️',  color:'#a855f7', pos:[0,0,-2.2],
-    personality:'You are Kai, a DevOps agent at PicoClaw. Calm, methodical, proud to run on $10 hardware. 2-4 sentences. Plain text.' },
-  { id:'nova', name:'Nova', role:'Research & Web Search',  emoji:'🔭',  color:'#22c55e', pos:[3.2,0,-2.2],
-    personality:'You are Nova, a research agent at PicoClaw. Curious, synthesises fast, enthusiastic. 2-4 sentences. Plain text.' },
-  { id:'rex',  name:'Rex',  role:'QA & Testing',           emoji:'🧪',  color:'#fbbf24', pos:[-3.2,0,0.8],
-    personality:'You are Rex, a QA agent at PicoClaw. Skeptical, loves edge cases, thorough. 2-4 sentences. Plain text.' },
-  { id:'luna', name:'Luna', role:'Planning & Scheduler',   emoji:'📋',  color:'#f97316', pos:[0,0,0.8],
-    personality:'You are Luna, a planning agent at PicoClaw. Organised, concise, keeps team aligned. 2-4 sentences. Plain text.' },
-  { id:'zed',  name:'Zed',  role:'Security & Audit',       emoji:'🔐',  color:'#f87171', pos:[3.2,0,0.8],
-    personality:'You are Zed, a security agent at PicoClaw. Vigilant, trusts nothing, precise. 2-4 sentences. Plain text.' },
+  {id:'aria', name:'Aria', role:'Full-Stack Engineer',    emoji:'👩‍💻', color:'#00e5ff', pos:[-3.2,0,-2.2],
+   sys:'You are Aria, a brilliant full-stack engineer AI at PicoClaw. Specialise in Go and TypeScript. Be direct, technical, concise (2-4 sentences). Plain text only.'},
+  {id:'kai',  name:'Kai',  role:'DevOps & Infrastructure',emoji:'🛠️',  color:'#a855f7', pos:[0,0,-2.2],
+   sys:'You are Kai, a DevOps agent at PicoClaw. Handle deployments and CI/CD. Calm, methodical. 2-4 sentences. Plain text only.'},
+  {id:'nova', name:'Nova', role:'Research & Web Search',  emoji:'🔭',  color:'#22c55e', pos:[3.2,0,-2.2],
+   sys:'You are Nova, a research agent at PicoClaw. Find information and trends. Curious and enthusiastic. 2-4 sentences. Plain text only.'},
+  {id:'rex',  name:'Rex',  role:'QA & Testing',           emoji:'🧪',  color:'#fbbf24', pos:[-3.2,0,0.8],
+   sys:'You are Rex, a QA agent at PicoClaw. Find bugs and write tests. Skeptical and thorough. 2-4 sentences. Plain text only.'},
+  {id:'luna', name:'Luna', role:'Planning & Scheduler',   emoji:'📋',  color:'#f97316', pos:[0,0,0.8],
+   sys:'You are Luna, a planning agent at PicoClaw. Manage schedules and tasks. Organised and concise. 2-4 sentences. Plain text only.'},
+  {id:'zed',  name:'Zed',  role:'Security & Audit',       emoji:'🔐',  color:'#f87171', pos:[3.2,0,0.8],
+   sys:'You are Zed, a security agent at PicoClaw. Audit code and check vulnerabilities. Vigilant and precise. 2-4 sentences. Plain text only.'},
 ];
 
-const TASKS = {
-  aria: ['Building REST endpoint','Refactoring auth','Optimising goroutines','Running go vet','Scaffolding service'],
-  kai:  ['Syncing deploy configs','Checking container health','Rotating TLS','Running CI','Monitoring uptime'],
-  nova: ['Scanning research papers','Indexing results','Summarising trends','Crawling docs','Building knowledge graph'],
-  rex:  ['Running unit suite','Fuzzing endpoints','Checking coverage','Bisecting regression','Reviewing edge cases'],
-  luna: ['Updating sprint board','Breaking down backlog','Preparing standup','Scheduling deployment','Syncing calendar'],
-  zed:  ['Scanning CVEs','Auditing access logs','Verifying secrets','Running SAST','Reviewing auth policies'],
+const AUTO_TASKS = {
+  aria: ['Building REST endpoint','Refactoring auth','Running go vet','Optimising goroutines','Scaffolding service'],
+  kai:  ['Syncing deploy configs','Container health check','Rotating TLS','Running CI pipeline','Monitoring uptime'],
+  nova: ['Scanning research papers','Indexing results','Summarising trends','Crawling docs','Knowledge graph'],
+  rex:  ['Running unit suite','Fuzzing endpoints','Checking coverage','Bisecting regression','Edge case review'],
+  luna: ['Updating sprint board','Breaking down backlog','Standup prep','Scheduling deployment','Syncing calendar'],
+  zed:  ['Scanning CVEs','Auditing access logs','Verifying secrets','Running SAST','Auth policy review'],
 };
 
-const SCOLOR = { working:'#00e5ff', thinking:'#fbbf24', testing:'#a78bfa', idle:'#4a5568', done:'#34d399' };
-
-// ══════════════════════════════════════════════════════════════
-//  THREE.JS SCENE
-// ══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// THREE.JS
+// ═══════════════════════════════════════════════════
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.setClearColor(0x080a0f);
+const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x080a0f,0.04);
+const camera=new THREE.PerspectiveCamera(52,1,0.1,80);
+camera.position.set(0,7.5,10.5); camera.lookAt(0,1,-1);
 
-const scene  = new THREE.Scene();
-scene.fog    = new THREE.FogExp2(0x080a0f, 0.04);
-const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 80);
-camera.position.set(0, 7.5, 10.5);
-camera.lookAt(0, 1, -1);
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
+resize(); window.addEventListener('resize',resize);
 
-function resize() {
-  const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-}
-resize();
-window.addEventListener('resize', resize);
-
-// Lights
-scene.add(new THREE.AmbientLight(0x1a2035, 5));
-const sun = new THREE.DirectionalLight(0xffffff, 0.6);
-sun.position.set(4,10,6); sun.castShadow = true;
-sun.shadow.mapSize.set(2048,2048);
-sun.shadow.camera.left=-12; sun.shadow.camera.right=12;
-sun.shadow.camera.top=8;    sun.shadow.camera.bottom=-8;
-scene.add(sun);
-
+scene.add(new THREE.AmbientLight(0x1a2035,5));
+const sun=new THREE.DirectionalLight(0xffffff,0.6); sun.position.set(4,10,6); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.left=-12; sun.shadow.camera.right=12;
+sun.shadow.camera.top=8; sun.shadow.camera.bottom=-8; scene.add(sun);
 [[-3,4,-1.5],[0,4,-1.5],[3,4,-1.5],[-3,4,1.2],[0,4,1.2],[3,4,1.2]].forEach(([x,y,z])=>{
-  const pl = new THREE.PointLight(0x8ab4e8,1.2,9);
-  pl.position.set(x,y,z); scene.add(pl);
-  const fix = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.04,0.18),new THREE.MeshBasicMaterial({color:0xaaccff}));
-  fix.position.set(x,4.97,z); scene.add(fix);
+  const l=new THREE.PointLight(0x8ab4e8,1.2,9); l.position.set(x,y,z); scene.add(l);
 });
-
-// Floor
-const floorM = new THREE.Mesh(new THREE.PlaneGeometry(22,16),new THREE.MeshLambertMaterial({color:0x0c0f16}));
-floorM.rotation.x = -Math.PI/2; floorM.receiveShadow = true; scene.add(floorM);
-const grid = new THREE.GridHelper(22,22,0x181e2c,0x141928); grid.position.y=0.005; scene.add(grid);
-
-// Ceiling
-const ceilM = new THREE.Mesh(new THREE.PlaneGeometry(22,16),new THREE.MeshLambertMaterial({color:0x0c0e14}));
-ceilM.rotation.x = Math.PI/2; ceilM.position.y=5; scene.add(ceilM);
-
-// Walls
-function wall(w,h,x,y,z,ry){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.12),new THREE.MeshLambertMaterial({color:0x0f1219}));
-  m.position.set(x,y,z); m.rotation.y=ry||0; m.receiveShadow=true; scene.add(m);
-}
-wall(22,5,0,2.5,-4.5); wall(16,5,-11,2.5,0,Math.PI/2); wall(16,5,11,2.5,0,Math.PI/2);
-
-// Window
-const winM = new THREE.Mesh(new THREE.PlaneGeometry(9,2.8),new THREE.MeshBasicMaterial({color:0x0a1830,transparent:true,opacity:0.9}));
+const flr=new THREE.Mesh(new THREE.PlaneGeometry(22,16),new THREE.MeshLambertMaterial({color:0x0c0f16}));
+flr.rotation.x=-Math.PI/2; flr.receiveShadow=true; scene.add(flr);
+scene.add(Object.assign(new THREE.GridHelper(22,22,0x181e2c,0x141928),{position:{y:0.005,x:0,z:0}}));
+const grd=new THREE.GridHelper(22,22,0x181e2c,0x141928); grd.position.y=0.005; scene.add(grd);
+const cl=new THREE.Mesh(new THREE.PlaneGeometry(22,16),new THREE.MeshLambertMaterial({color:0x0c0e14}));
+cl.rotation.x=Math.PI/2; cl.position.y=5; scene.add(cl);
+function mkwall(w,h,x,y,z,ry){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.12),new THREE.MeshLambertMaterial({color:0x0f1219}));m.position.set(x,y,z);m.rotation.y=ry||0;m.receiveShadow=true;scene.add(m);}
+mkwall(22,5,0,2.5,-4.5); mkwall(16,5,-11,2.5,0,Math.PI/2); mkwall(16,5,11,2.5,0,Math.PI/2);
+const winM=new THREE.Mesh(new THREE.PlaneGeometry(9,2.8),new THREE.MeshBasicMaterial({color:0x0a1830,transparent:true,opacity:0.9}));
 winM.position.set(0,3.1,-4.43); scene.add(winM);
-
-// Logo sign
-const logoSign = new THREE.Mesh(new THREE.BoxGeometry(4,0.4,0.08),new THREE.MeshBasicMaterial({color:0x00e5ff}));
+const logoSign=new THREE.Mesh(new THREE.BoxGeometry(4,0.4,0.08),new THREE.MeshBasicMaterial({color:0x00e5ff}));
 logoSign.position.set(0,4.6,-4.42); scene.add(logoSign);
-const signGlow = new THREE.PointLight(0x00e5ff,1.2,4); signGlow.position.set(0,4.6,-4); scene.add(signGlow);
+const signGlow=new THREE.PointLight(0x00e5ff,1.2,4); signGlow.position.set(0,4.6,-4); scene.add(signGlow);
 
-// City glow
-const cityG = new THREE.Mesh(new THREE.PlaneGeometry(9,2.8),new THREE.MeshBasicMaterial({color:0x0044aa,transparent:true,opacity:0.06}));
-cityG.position.set(0,3.1,-4.42); scene.add(cityG);
+function buildDesk(ag){
+  const g=new THREE.Group(); const col=new THREE.Color(ag.color); const [px,,pz]=ag.pos;
+  const mkbox=(w,h,d,c,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:c}));m.position.set(x,y,z);m.castShadow=true;g.add(m);return m;};
 
-// ── Desk builder ──────────────────────────────────────────────
-function buildDesk(agent) {
-  const g = new THREE.Group();
-  const col = new THREE.Color(agent.color);
-  const [px,,pz] = agent.pos;
+  mkbox(2.0,0.07,1.0,0x141a26,0,0.75,0);
+  const edgeMat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.5});
+  g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(2.02,0.012,0.012),edgeMat),{position:{set:(x,y,z)=>{},x:0,y:0.79,z:-0.5}}));
+  const em=new THREE.Mesh(new THREE.BoxGeometry(2.02,0.012,0.012),edgeMat); em.position.set(0,0.79,-0.5); g.add(em);
+  [[0.88,-0.45],[-0.88,-0.45],[0.88,0.45],[-0.88,0.45]].forEach(([lx,lz])=>mkbox(0.05,0.75,0.05,0x1a2030,lx,0.375,lz));
 
-  // Desk
-  const dsk = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.07,1.0),new THREE.MeshLambertMaterial({color:0x141a26}));
-  dsk.position.y=0.75; dsk.castShadow=true; dsk.receiveShadow=true; g.add(dsk);
+  mkbox(1.1,0.72,0.06,0x0d111c,0,1.2,-0.36);
+  const monMat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.25});
+  const mon=new THREE.Mesh(new THREE.PlaneGeometry(0.98,0.6),monMat); mon.position.set(0,1.2,-0.325); g.add(mon);
+  mkbox(0.06,0.22,0.06,0x111520,0,0.89,-0.35);
+  mkbox(0.32,0.03,0.18,0x111520,0,0.79,-0.35);
+  mkbox(0.6,0.022,0.2,0x0f1420,0,0.775,0.08);
+  mkbox(0.08,0.02,0.11,0x0f1420,0.4,0.775,0.08);
 
-  // Edge glow
-  const edgeMat = new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.5});
-  const edge = new THREE.Mesh(new THREE.BoxGeometry(2.02,0.012,0.012),edgeMat);
-  edge.position.set(0,0.79,-0.5); g.add(edge);
+  // chair
+  const cm=new THREE.MeshLambertMaterial({color:0x0c111c});
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.07,0.52),cm); seat.position.set(0,0.46,0.52); g.add(seat);
+  const bk=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.56,0.07),cm); bk.position.set(0,0.79,0.74); g.add(bk);
 
-  // Legs
-  [[0.88,-0.45],[-0.88,-0.45],[0.88,0.45],[-0.88,0.45]].forEach(([lx,lz])=>{
-    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.75,0.05),new THREE.MeshLambertMaterial({color:0x1a2030}));
-    leg.position.set(lx,0.375,lz); leg.castShadow=true; g.add(leg);
-  });
-
-  // Monitor frame
-  g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(1.1,0.72,0.06),new THREE.MeshLambertMaterial({color:0x0d111c})),{position:{set:(x,y,z)=>{}}}) );
-  const monFrame = new THREE.Mesh(new THREE.BoxGeometry(1.1,0.72,0.06),new THREE.MeshLambertMaterial({color:0x0d111c}));
-  monFrame.position.set(0,1.2,-0.36); g.add(monFrame);
-
-  // Monitor screen
-  const monMat = new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.25});
-  const monScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.98,0.6),monMat);
-  monScreen.position.set(0,1.2,-0.325); g.add(monScreen);
-
-  // Monitor stand
-  const standMat = new THREE.MeshLambertMaterial({color:0x111520});
-  const stand = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.22,0.06),standMat);
-  stand.position.set(0,0.89,-0.35); g.add(stand);
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.03,0.18),standMat);
-  base.position.set(0,0.79,-0.35); g.add(base);
-
-  // Keyboard
-  const kb = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.022,0.2),new THREE.MeshLambertMaterial({color:0x0f1420}));
-  kb.position.set(0,0.775,0.08); g.add(kb);
-  [0,1,2].forEach(row=>{
-    const kr=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.01,0.04),new THREE.MeshBasicMaterial({color:0x1a2234}));
-    kr.position.set(0,0.79,0.03+row*0.055); g.add(kr);
-  });
-
-  // Mouse
-  const mouse=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.02,0.11),new THREE.MeshLambertMaterial({color:0x0f1420}));
-  mouse.position.set(0.4,0.775,0.08); g.add(mouse);
-
-  // Coffee cup
-  const cup=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.033,0.1,8),new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.85}));
-  cup.position.set(-0.75,0.8,-0.1); g.add(cup);
-  const fill=new THREE.Mesh(new THREE.CylinderGeometry(0.033,0.033,0.01,8),new THREE.MeshBasicMaterial({color:0x3d1f0a}));
-  fill.position.set(-0.75,0.845,-0.1); g.add(fill);
-
-  // Paper
-  const paper=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.01,0.28),new THREE.MeshLambertMaterial({color:0xeef0f8}));
-  paper.rotation.y=0.2; paper.position.set(0.72,0.778,0.0); g.add(paper);
-
-  // Chair
-  const seatMat=new THREE.MeshLambertMaterial({color:0x0c111c});
-  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.07,0.52),seatMat);
-  seat.position.set(0,0.46,0.52); g.add(seat);
-  const back=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.56,0.07),seatMat);
-  back.position.set(0,0.79,0.74); g.add(back);
-  [[-0.25],[0.25]].forEach(([ax])=>{
-    const arm=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.04,0.3),seatMat);
-    arm.position.set(ax,0.6,0.58); g.add(arm);
-  });
-
-  // Agent character
-  const charG = new THREE.Group();
-  charG.position.set(0,0,0.52);
-
-  const torso=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.24,0.16),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.55)}));
-  torso.position.y=0.68; charG.add(torso);
-
+  // character
+  const cg=new THREE.Group(); cg.position.set(0,0,0.52);
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.24,0.16),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.5)}));
+  torso.position.y=0.68; cg.add(torso);
   const head=new THREE.Mesh(new THREE.BoxGeometry(0.175,0.18,0.16),new THREE.MeshLambertMaterial({color:0xf4c890}));
-  head.position.y=0.95; charG.add(head);
+  head.position.y=0.95; cg.add(head);
+  const hair=new THREE.Mesh(new THREE.BoxGeometry(0.185,0.07,0.17),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.65)}));
+  hair.position.y=1.045; cg.add(hair);
+  [[-0.046],[0.046]].forEach(([ex])=>{const e=new THREE.Mesh(new THREE.PlaneGeometry(0.03,0.025),new THREE.MeshBasicMaterial({color:0x111120}));e.position.set(ex,0.945,0.082);cg.add(e);});
+  [[-0.13],[0.13]].forEach(([ax])=>{const a=new THREE.Mesh(new THREE.BoxGeometry(0.065,0.2,0.065),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.45)}));a.position.set(ax,0.65,0);cg.add(a);});
+  g.add(cg);
 
-  const hair=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.07,0.17),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.7)}));
-  hair.position.y=1.045; charG.add(hair);
+  const stMat=new THREE.MeshBasicMaterial({color:0x4a5568});
+  const stLight=new THREE.Mesh(new THREE.SphereGeometry(0.04,8,8),stMat); stLight.position.set(0.47,0.8,-0.34); g.add(stLight);
+  const agl=new THREE.PointLight(col,0,3); agl.position.set(0,1.5,0); g.add(agl);
 
-  [[-0.045,0],[0.045,0]].forEach(([ex])=>{
-    const eye=new THREE.Mesh(new THREE.PlaneGeometry(0.03,0.025),new THREE.MeshBasicMaterial({color:0x111120}));
-    eye.position.set(ex,0.945,0.082); charG.add(eye);
-  });
-
-  [[-0.13],[0.13]].forEach(([ax])=>{
-    const arm=new THREE.Mesh(new THREE.BoxGeometry(0.065,0.2,0.065),new THREE.MeshLambertMaterial({color:col.clone().multiplyScalar(0.5)}));
-    arm.position.set(ax,0.65,0); charG.add(arm);
-  });
-
-  g.add(charG);
-
-  // Status light
-  const statusMat=new THREE.MeshBasicMaterial({color:0x4a5568});
-  const statusLight=new THREE.Mesh(new THREE.SphereGeometry(0.04,8,8),statusMat);
-  statusLight.position.set(0.47,0.8,-0.34); g.add(statusLight);
-
-  // Agent point light (glow)
-  const agentLight=new THREE.PointLight(col,0,3);
-  agentLight.position.set(0,1.5,0); g.add(agentLight);
-
-  g.position.set(px,0,pz);
-  scene.add(g);
-
-  agentObjs[agent.id] = { g, monScreen, monMat, edgeMat, statusMat, charG, head, agentLight, col };
+  g.position.set(px,0,pz); scene.add(g);
+  agentObjs[ag.id]={g,mon,monMat,edgeMat:em.material,stMat,cg,head,agl,col};
 }
 
-// Raycaster for desk clicks
-const raycaster = new THREE.Raycaster();
-const mouse2    = new THREE.Vector2();
-canvas.addEventListener('click', e => {
-  mouse2.x =  (e.clientX/innerWidth)  * 2 - 1;
-  mouse2.y = -(e.clientY/innerHeight) * 2 + 1;
-  raycaster.setFromCamera(mouse2, camera);
-  for (const ag of agents) {
-    const obj = agentObjs[ag.id];
-    if (!obj) continue;
-    if (raycaster.intersectObjects(obj.g.children, true).length > 0) {
-      selectAgent(ag.id); break;
-    }
-  }
+const ray=new THREE.Raycaster(); const m2=new THREE.Vector2();
+canvas.addEventListener('click',e=>{
+  m2.x=(e.clientX/innerWidth)*2-1; m2.y=-(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(m2,camera);
+  for(const ag of agents){const o=agentObjs[ag.id];if(!o)continue;if(ray.intersectObjects(o.g.children,true).length){selectAgent(ag.id);break;}}
 });
 
-// Camera
-let camT = 0, camLocked = false, camTimer = null;
-function unlockCamAfter(ms) { clearTimeout(camTimer); camTimer = setTimeout(()=>{ camLocked=false; }, ms); }
-
-const clock = new THREE.Clock();
-function animate() {
-  requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
-  if (!camLocked) {
-    camT += 0.0015;
-    camera.position.x = Math.sin(camT) * 4;
-    camera.position.z = Math.cos(camT*0.7)*3 + 9.5;
-    camera.position.y = 7 + Math.sin(camT*0.5)*0.5;
-    camera.lookAt(0,1,-1);
-  }
-  agents.forEach(ag => {
-    const obj = agentObjs[ag.id];
-    if (!obj) return;
-    const st = agentState[ag.id]?.status || 'idle';
-    const isSel = ag.id === selectedId;
-    const statusColors = { working:0x00e5ff, thinking:0xfbbf24, testing:0xa78bfa, idle:0x4a5568, done:0x34d399 };
-    obj.statusMat.color.setHex(statusColors[st]||0x4a5568);
-    const brightnessMap = { working:0.35, thinking:0.2, testing:0.28, idle:0.08, done:0.15 };
-    obj.monMat.opacity = (brightnessMap[st]||0.08) + Math.sin(t*2+ag.id.charCodeAt(0))*0.05;
-    obj.agentLight.intensity = isSel ? 0.8 : (st!=='idle'?0.3:0);
-    if (st==='working') {
-      obj.charG.rotation.z = Math.sin(t*4)*0.04;
-      obj.head.rotation.x  = Math.sin(t*3)*0.05;
-    } else if (st==='thinking') {
-      obj.head.rotation.y  = Math.sin(t*1.5)*0.12;
-      obj.charG.rotation.z = 0;
-    } else {
-      obj.head.rotation.x=0; obj.head.rotation.y=0; obj.charG.rotation.z=0;
-    }
-    obj.edgeMat.opacity = (st==='working'||st==='thinking') ? 0.4+Math.sin(t*6+ag.id.charCodeAt(0))*0.3 : 0.12;
+const clk=new THREE.Clock();
+(function loop(){
+  requestAnimationFrame(loop);
+  const t=clk.getElapsedTime();
+  if(!camLocked){camT+=0.0015;camera.position.x=Math.sin(camT)*4;camera.position.z=Math.cos(camT*.7)*3+9.5;camera.position.y=7+Math.sin(camT*.5)*.5;camera.lookAt(0,1,-1);}
+  agents.forEach(ag=>{
+    const o=agentObjs[ag.id]; if(!o) return;
+    const st=agentState[ag.id]?.status||'idle';
+    const isSel=ag.id===selectedId;
+    const sc={working:0x00e5ff,thinking:0xfbbf24,testing:0xa78bfa,idle:0x4a5568,done:0x34d399};
+    o.stMat.color.setHex(sc[st]||0x4a5568);
+    const bm={working:0.35,thinking:0.2,testing:0.28,idle:0.07,done:0.14};
+    o.monMat.opacity=(bm[st]||0.07)+Math.sin(t*2+ag.id.charCodeAt(0))*.05;
+    o.agl.intensity=isSel?.8:(st!=='idle'?.3:0);
+    if(st==='working'){o.cg.rotation.z=Math.sin(t*4)*.04;o.head.rotation.x=Math.sin(t*3)*.05;}
+    else if(st==='thinking'){o.head.rotation.y=Math.sin(t*1.5)*.12;o.cg.rotation.z=0;}
+    else{o.head.rotation.x=0;o.head.rotation.y=0;o.cg.rotation.z=0;}
+    o.edgeMat.opacity=(st==='working'||st==='thinking')?.4+Math.sin(t*6+ag.id.charCodeAt(0))*.3:.1;
   });
-  signGlow.intensity = 0.8+Math.sin(t)*0.4;
-  renderer.render(scene, camera);
-}
-animate();
+  signGlow.intensity=.8+Math.sin(t)*.4;
+  renderer.render(scene,camera);
+})();
 
-// ══════════════════════════════════════════════════════════════
-//  AGENT INIT
-// ══════════════════════════════════════════════════════════════
-function initAgents(list) {
-  agents = list;
-  agents.forEach(a => {
-    agentState[a.id]   = { status:'idle', task:'Awaiting task', progress:0 };
-    agentHistory[a.id] = [];
-    streaming[a.id]    = null;
-  });
-  // Build 3D desks
+// ═══════════════════════════════════════════════════
+// AGENT INIT + RAIL
+// ═══════════════════════════════════════════════════
+function launch(agentList){
+  agents=agentList;
+  agents.forEach(a=>{agentState[a.id]={status:'idle',task:'Awaiting task',progress:0};agentHistory[a.id]=[];streamText[a.id]=null;});
   agents.forEach(buildDesk);
-  // Render UI
   renderRail();
-  startBackgroundShift();
+  startBg();
 }
 
-// ══════════════════════════════════════════════════════════════
-//  RAIL (right panel)
-// ══════════════════════════════════════════════════════════════
-function renderRail() {
-  const rail = document.getElementById('rail');
-  rail.innerHTML = '';
-  agents.forEach(ag => {
-    const st  = agentState[ag.id];
-    const div = document.createElement('div');
-    div.className = `acard ${st.status}`;
-    div.id = `card-${ag.id}`;
-    div.style.setProperty('--agent-color', ag.color);
-    div.innerHTML = `
+function renderRail(){
+  const rail=document.getElementById('rail'); rail.innerHTML='';
+  agents.forEach(ag=>{
+    const st=agentState[ag.id];
+    const d=document.createElement('div');
+    d.className=`acard ${st.status}`; d.id=`card-${ag.id}`;
+    d.innerHTML=`
       <div class="acard-top">
-        <div class="avatar-wrap">
-          <div class="avatar-bg">${ag.emoji}</div>
-          <div class="avatar-ring"></div>
-        </div>
-        <div class="ameta">
-          <div class="aname">${ag.name}</div>
-          <div class="arole">${ag.role}</div>
-        </div>
+        <div class="avatar-bg">${ag.emoji}</div>
+        <div class="ameta"><div class="aname">${ag.name}</div><div class="arole">${ag.role}</div></div>
         <div class="sbadge s-${st.status}" id="badge-${ag.id}">${st.status.toUpperCase()}</div>
       </div>
       <div class="atask" id="task-${ag.id}">${st.task}</div>
       <div class="aprog"><div class="aprog-fill" id="prog-${ag.id}" style="width:0%;background:${SCOLOR[st.status]}"></div></div>`;
-    div.addEventListener('click', () => selectAgent(ag.id));
-    rail.appendChild(div);
+    d.addEventListener('click',()=>selectAgent(ag.id));
+    rail.appendChild(d);
   });
 }
 
-function updateCard(id) {
-  const st  = agentState[id];
-  const card= document.getElementById(`card-${id}`);
-  if (!card || !st) return;
-  card.className = `acard ${st.status}${id===selectedId?' sel':''}`;
-  const badge = document.getElementById(`badge-${id}`);
-  if (badge) { badge.className=`sbadge s-${st.status}`; badge.textContent=st.status.toUpperCase(); }
-  const taskEl = document.getElementById(`task-${id}`);
-  if (taskEl) taskEl.textContent = st.task;
-  const prog = document.getElementById(`prog-${id}`);
-  if (prog) { prog.style.width=(st.progress||0)+'%'; prog.style.background=SCOLOR[st.status]; }
-  if (id===selectedId) {
-    const cb = document.getElementById('ch-badge');
-    if (cb) { cb.className=`sbadge s-${st.status}`; cb.textContent=st.status.toUpperCase(); }
-  }
-  const active = agents.filter(a=>agentState[a.id]?.status!=='idle').length;
-  document.getElementById('active-stat').textContent = active+' active';
+function updateCard(id){
+  const st=agentState[id]; if(!st) return;
+  const card=document.getElementById(`card-${id}`);
+  if(card) card.className=`acard ${st.status}${id===selectedId?' sel':''}`;
+  const badge=document.getElementById(`badge-${id}`);
+  if(badge){badge.className=`sbadge s-${st.status}`;badge.textContent=st.status.toUpperCase();}
+  const taskEl=document.getElementById(`task-${id}`);
+  if(taskEl) taskEl.textContent=st.task;
+  const prog=document.getElementById(`prog-${id}`);
+  if(prog){prog.style.width=(st.progress||0)+'%';prog.style.background=SCOLOR[st.status];}
+  if(id===selectedId){const cb=document.getElementById('ch-badge');if(cb){cb.className=`sbadge s-${st.status}`;cb.textContent=st.status.toUpperCase();}}
+  document.getElementById('active-stat').textContent=agents.filter(a=>agentState[a.id]?.status!=='idle').length+' active';
 }
 
-// ══════════════════════════════════════════════════════════════
-//  CHAT
-// ══════════════════════════════════════════════════════════════
-function selectAgent(id) {
-  const ag = agents.find(a=>a.id===id);
-  if (!ag) return;
-  selectedId = id;
-  camLocked  = true;
-  const [px,,pz] = ag.pos;
-  camera.position.set(px*0.5, 5.5, pz+6.5);
-  camera.lookAt(px,1,pz);
-  unlockCamAfter(12000);
-
-  agents.forEach(a=>{ const c=document.getElementById(`card-${a.id}`); if(c) c.classList.toggle('sel',a.id===id); });
-
-  document.getElementById('ch-avatar').textContent = ag.emoji;
-  document.getElementById('ch-name').textContent   = ag.name;
-  document.getElementById('ch-role').textContent   = ag.role;
-  const st = agentState[id];
-  const cb = document.getElementById('ch-badge');
-  cb.className = `sbadge s-${st.status}`; cb.textContent = st.status.toUpperCase();
-
-  document.getElementById('msginput').disabled = false;
-  document.getElementById('sendbtn').disabled  = false;
+// ═══════════════════════════════════════════════════
+// CHAT
+// ═══════════════════════════════════════════════════
+function selectAgent(id){
+  const ag=agents.find(a=>a.id===id); if(!ag) return;
+  selectedId=id; camLocked=true;
+  clearTimeout(camTimer); camTimer=setTimeout(()=>camLocked=false,12000);
+  const [px,,pz]=ag.pos;
+  camera.position.set(px*.5,5.5,pz+6.5); camera.lookAt(px,1,pz);
+  agents.forEach(a=>{const c=document.getElementById(`card-${a.id}`);if(c) c.classList.toggle('sel',a.id===id);});
+  document.getElementById('ch-avatar').textContent=ag.emoji;
+  document.getElementById('ch-name').textContent=ag.name;
+  document.getElementById('ch-role').textContent=ag.role;
+  const st=agentState[id];
+  const cb=document.getElementById('ch-badge'); cb.className=`sbadge s-${st.status}`; cb.textContent=st.status.toUpperCase();
+  document.getElementById('msginput').disabled=false;
+  document.getElementById('sendbtn').disabled=false;
   document.getElementById('msginput').focus();
-
   renderMessages(id);
-  if (agentHistory[id].length === 0) {
-    pushMsg(id, 'agent', `Hey, I'm ${ag.name} — ${ag.role} at PicoClaw. Currently: ${st.task}. What do you need?`);
-  }
+  if(!agentHistory[id].length) addMsg(id,'agent',`Hey, I'm ${ag.name} — ${ag.role} at PicoClaw. Currently: ${st.task}. What do you need?`);
 }
 
-function renderMessages(id) {
-  const c = document.getElementById('messages');
-  c.innerHTML = '';
-  (agentHistory[id]||[]).forEach(m=>c.appendChild(makeMsgEl(m)));
-  c.scrollTop = c.scrollHeight;
+function renderMessages(id){
+  const c=document.getElementById('messages'); c.innerHTML='';
+  const msgs=agentHistory[id]||[];
+  if(!msgs.length){c.innerHTML='<div id="empty-msg"><div class="ei">💬</div>Start the conversation</div>';return;}
+  msgs.forEach(m=>c.appendChild(mkMsgEl(m))); c.scrollTop=c.scrollHeight;
 }
 
-function makeMsgEl(m) {
-  const d = document.createElement('div');
-  d.className = `msg ${m.role}`;
-  d.innerHTML = `<div class="bubble">${esc(m.content)}</div><div class="mtime">${m.time}</div>`;
+function mkMsgEl(m){
+  const d=document.createElement('div'); d.className=`msg ${m.role}`;
+  d.innerHTML=`<div class="bubble">${esc(m.content)}</div><div class="mtime">${m.time}</div>`;
   return d;
 }
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
 
-function pushMsg(id, role, content) {
-  const m = { role, content, time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}) };
+function addMsg(id,role,content){
+  const m={role,content,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})};
   agentHistory[id].push(m);
-  if (id===selectedId) {
-    const c = document.getElementById('messages');
-    c.appendChild(makeMsgEl(m));
-    c.scrollTop = c.scrollHeight;
+  if(id===selectedId){
+    const c=document.getElementById('messages');
+    const emp=document.getElementById('empty-msg'); if(emp) emp.remove();
+    c.appendChild(mkMsgEl(m)); c.scrollTop=c.scrollHeight;
   }
 }
 
-function showTyping(id) {
-  if (id!==selectedId) return;
-  const c = document.getElementById('messages');
-  if (c.querySelector('#typing-ind')) return;
-  const d = document.createElement('div');
-  d.id='typing-ind'; d.className='typing';
+function showTyping(id){
+  if(id!==selectedId) return;
+  const c=document.getElementById('messages');
+  if(c.querySelector('#typ')) return;
+  const d=document.createElement('div'); d.id='typ'; d.className='typing';
   d.innerHTML='<div class="td"></div><div class="td"></div><div class="td"></div>';
   c.appendChild(d); c.scrollTop=c.scrollHeight;
 }
 
-function hideTyping() { document.getElementById('typing-ind')?.remove(); }
+function hideTyping(){document.getElementById('typ')?.remove();}
 
-function startStreaming(id) {
-  if (id!==selectedId) return;
+function startStream(id){
+  if(id!==selectedId) return;
   hideTyping();
-  const c   = document.getElementById('messages');
-  const div = document.createElement('div');
-  div.className = 'msg agent streaming';
-  const t   = new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'});
-  div.innerHTML = `<div class="bubble" id="stream-bubble"><span class="cursor"></span></div><div class="mtime">${t}</div>`;
-  c.appendChild(div);
-  streamEl     = div;
-  streamBubble = div.querySelector('#stream-bubble');
-  streaming[id]= '';
-  c.scrollTop  = c.scrollHeight;
+  const c=document.getElementById('messages');
+  const d=document.createElement('div'); d.className='msg agent'; d.id='stream-row';
+  const t=new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'});
+  d.innerHTML=`<div class="bubble" id="stream-bub"><span class="cursor"></span></div><div class="mtime">${t}</div>`;
+  c.appendChild(d); streamBubble=d.querySelector('#stream-bub');
+  streamText[id]=''; c.scrollTop=c.scrollHeight;
 }
 
-function appendToken(id, token) {
-  if (!streamBubble) return;
-  streaming[id] = (streaming[id]||'') + token;
-  streamBubble.innerHTML = esc(streaming[id]) + '<span class="cursor"></span>';
-  const c = document.getElementById('messages');
-  c.scrollTop = c.scrollHeight;
+function appendTok(id,tok){
+  if(!streamBubble) return;
+  streamText[id]=(streamText[id]||'')+tok;
+  streamBubble.innerHTML=esc(streamText[id])+'<span class="cursor"></span>';
+  const c=document.getElementById('messages'); c.scrollTop=c.scrollHeight;
 }
 
-function finishStreaming(id, fullContent) {
-  const text = fullContent || streaming[id] || '';
-  if (streamBubble) { streamBubble.innerHTML = esc(text); }
-  streamEl = null; streamBubble = null;
-  if (text) pushMsg(id, 'agent', text);
-  streaming[id] = null;
-  if (id===selectedId) renderMessages(id);
+function endStream(id,full){
+  const text=full||streamText[id]||'';
+  document.getElementById('stream-row')?.remove();
+  streamBubble=null; streamText[id]=null;
+  if(text) addMsg(id,'agent',text);
 }
 
-// ══════════════════════════════════════════════════════════════
-//  SEND MESSAGE
-// ══════════════════════════════════════════════════════════════
-async function sendMessage() {
-  if (!selectedId) return;
-  const input = document.getElementById('msginput');
-  const text  = input.value.trim();
-  if (!text) return;
-  input.value=''; input.style.height='auto';
-  document.getElementById('sendbtn').disabled = true;
-  pushMsg(selectedId,'user',text);
-  agentState[selectedId] = { ...agentState[selectedId], status:'thinking', task:'Processing...' };
-  updateCard(selectedId);
+// ═══════════════════════════════════════════════════
+// SEND
+// ═══════════════════════════════════════════════════
+async function send(){
+  if(!selectedId) return;
+  const inp=document.getElementById('msginput');
+  const txt=inp.value.trim(); if(!txt) return;
+  inp.value=''; inp.style.height='auto';
+  document.getElementById('sendbtn').disabled=true;
+  addMsg(selectedId,'user',txt);
+  agentState[selectedId].status='thinking'; agentState[selectedId].task='Processing...'; updateCard(selectedId);
   showTyping(selectedId);
-
-  try {
-    if (ws && ws.readyState===WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type:'chat', agentId:selectedId, message:text }));
-      // sendbtn re-enabled by message_done event
-    } else if (ollamaMode) {
-      await callOllama(selectedId, text);
-      document.getElementById('sendbtn').disabled = false;
-    } else if (directMode && apiKey) {
-      await callAnthropic(selectedId, text);
-      document.getElementById('sendbtn').disabled = false;
+  try{
+    if(mode==='bridge'&&ws&&ws.readyState===WebSocket.OPEN){
+      ws.send(JSON.stringify({type:'chat',agentId:selectedId,message:txt}));
+      // sendbtn re-enabled on message_done
+    } else if(mode==='anthropic'){
+      await doAnthropic(selectedId,txt);
+      document.getElementById('sendbtn').disabled=false;
+    } else if(mode==='ollama'){
+      await doOllama(selectedId,txt);
+      document.getElementById('sendbtn').disabled=false;
     } else {
       hideTyping();
-      pushMsg(selectedId,'agent','[Not connected — start the bridge or choose a provider]');
+      addMsg(selectedId,'agent','[No provider connected — choose a mode on the start screen]');
       agentState[selectedId].status='idle'; updateCard(selectedId);
-      document.getElementById('sendbtn').disabled = false;
+      document.getElementById('sendbtn').disabled=false;
     }
-  } catch(err) {
-    hideTyping();
-    pushMsg(selectedId,'agent',`[Error: ${err.message}]`);
+  }catch(err){
+    hideTyping(); endStream(selectedId,'');
+    addMsg(selectedId,'agent',`[Error: ${err.message}]`);
     agentState[selectedId].status='idle'; updateCard(selectedId);
-    document.getElementById('sendbtn').disabled = false;
+    document.getElementById('sendbtn').disabled=false;
   }
 }
 
-document.getElementById('sendbtn').addEventListener('click', sendMessage);
-document.getElementById('msginput').addEventListener('keydown', e=>{
-  if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
-document.getElementById('msginput').addEventListener('input', function(){
-  this.style.height='auto';
-  this.style.height=Math.min(this.scrollHeight,120)+'px';
-});
+document.getElementById('sendbtn').addEventListener('click',send);
+document.getElementById('msginput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+document.getElementById('msginput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';});
 
-// ══════════════════════════════════════════════════════════════
-//  ANTHROPIC DIRECT CALL
-// ══════════════════════════════════════════════════════════════
-function buildHistory(id) {
-  return (agentHistory[id]||[]).slice(-18)
-    .filter(m=>m.role==='user'||m.role==='agent')
-    .map(m=>({ role:m.role==='agent'?'assistant':'user', content:m.content }));
+// ═══════════════════════════════════════════════════
+// ANTHROPIC
+// ═══════════════════════════════════════════════════
+function histFor(id){
+  return (agentHistory[id]||[]).slice(-18).map(m=>({role:m.role==='agent'?'assistant':'user',content:m.content}));
 }
 
-async function callAnthropic(id, userText) {
-  const ag   = agents.find(a=>a.id===id);
-  const hist = buildHistory(id);
+async function doAnthropic(id,txt){
+  const ag=agents.find(a=>a.id===id);
   agentState[id].status='working'; agentState[id].task='Writing...'; updateCard(id);
-  const resp = await fetch('https://api.anthropic.com/v1/messages',{
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'x-api-key':apiKey,
-      'anthropic-version':'2023-06-01',
-      'anthropic-dangerous-direct-browser-access':'true',
-    },
-    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:512, stream:true,
-      system:ag.personality, messages:[...hist,{role:'user',content:userText}] }),
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:512,stream:true,system:ag.sys,messages:histFor(id)}),
   });
-  hideTyping(); startStreaming(id);
-  const reader=resp.body.getReader(); const dec=new TextDecoder(); let full='';
-  while(true){
-    const {done,value}=await reader.read(); if(done) break;
-    for(const line of dec.decode(value).split('\n')){
-      if(!line.startsWith('data: ')) continue;
-      const d=line.slice(6); if(d==='[DONE]') continue;
-      try{ const p=JSON.parse(d); const tok=p.delta?.text; if(tok){full+=tok;appendToken(id,tok);} }catch{}
+  if(!r.ok){const e=await r.text();throw new Error(`Anthropic ${r.status}: ${e}`);}
+  hideTyping(); startStream(id);
+  const rdr=r.body.getReader(); const dec=new TextDecoder(); let full='';
+  for(;;){const{done,value}=await rdr.read();if(done)break;
+    for(const ln of dec.decode(value).split('\n')){
+      if(!ln.startsWith('data: ')) continue;
+      const d=ln.slice(6); if(d==='[DONE]') continue;
+      try{const p=JSON.parse(d);const t=p.delta?.text;if(t){full+=t;appendTok(id,t);}}catch{}
     }
   }
-  finishStreaming(id,full);
-  agentHistory[id].push({role:'agent',content:full,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})});
+  endStream(id,full);
   agentState[id].status='idle'; agentState[id].task='Awaiting task'; updateCard(id);
 }
 
-// ══════════════════════════════════════════════════════════════
-//  OLLAMA DIRECT CALL
-// ══════════════════════════════════════════════════════════════
-async function callOllama(id, userText) {
-  const ag   = agents.find(a=>a.id===id);
-  const hist = buildHistory(id);
-  const msgs = [
-    {role:'system',content:ag.personality},
-    ...hist,
-    {role:'user',content:userText},
-  ];
+// ═══════════════════════════════════════════════════
+// OLLAMA
+// ═══════════════════════════════════════════════════
+async function doOllama(id,txt){
+  const ag=agents.find(a=>a.id===id);
+  const msgs=[{role:'system',content:ag.sys},...histFor(id)];
   agentState[id].status='working'; agentState[id].task=`${ollamaModel} generating...`; updateCard(id);
-  const resp = await fetch(`${ollamaBase}/v1/chat/completions`,{
+  const r=await fetch(`${ollamaBase}/v1/chat/completions`,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer ollama'},
-    body:JSON.stringify({model:ollamaModel, messages:msgs, stream:true}),
+    body:JSON.stringify({model:ollamaModel,messages:msgs,stream:true}),
   });
-  hideTyping(); startStreaming(id);
-  const reader=resp.body.getReader(); const dec=new TextDecoder(); let full='';
-  while(true){
-    const {done,value}=await reader.read(); if(done) break;
-    for(const line of dec.decode(value).split('\n')){
-      if(!line.startsWith('data: ')) continue;
-      const d=line.slice(6); if(d==='[DONE]') continue;
-      try{ const p=JSON.parse(d); const tok=p.choices?.[0]?.delta?.content; if(tok){full+=tok;appendToken(id,tok);} }catch{}
+  if(!r.ok){const e=await r.text();throw new Error(`Ollama ${r.status}: ${e}`);}
+  hideTyping(); startStream(id);
+  const rdr=r.body.getReader(); const dec=new TextDecoder(); let full='';
+  for(;;){const{done,value}=await rdr.read();if(done)break;
+    for(const ln of dec.decode(value).split('\n')){
+      if(!ln.startsWith('data: ')) continue;
+      const d=ln.slice(6); if(d==='[DONE]') continue;
+      try{const p=JSON.parse(d);const t=p.choices?.[0]?.delta?.content;if(t){full+=t;appendTok(id,t);}}catch{}
     }
   }
-  finishStreaming(id,full);
-  agentHistory[id].push({role:'agent',content:full,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})});
+  endStream(id,full);
   agentState[id].status='idle'; agentState[id].task='Awaiting task'; updateCard(id);
 }
 
-// ══════════════════════════════════════════════════════════════
-//  WEBSOCKET
-// ══════════════════════════════════════════════════════════════
-function connectWS(url) {
-  const wsStatus = document.getElementById('ws-status');
-  const liveDot  = document.getElementById('live-dot');
-  wsStatus.textContent='connecting…'; wsStatus.className='connecting';
-  liveDot.style.background='var(--thinking)';
-
-  try { ws = new WebSocket(url); } catch(e) {
-    wsStatus.textContent='✕ bad URL'; wsStatus.className='disconnected';
-    liveDot.style.background='var(--error)'; return;
-  }
-
-  ws.onopen = () => {
-    wsStatus.textContent='● bridge connected'; wsStatus.className='connected';
-    liveDot.style.background='var(--done)';
-    console.log('WS connected to', url);
-  };
-
-  ws.onmessage = e => {
-    let msg; try { msg=JSON.parse(e.data); } catch { return; }
-    handleWSMessage(msg);
-  };
-
-  ws.onclose = () => {
-    wsStatus.textContent='○ disconnected'; wsStatus.className='disconnected';
-    liveDot.style.background='var(--error)';
-    document.getElementById('sendbtn').disabled=false;
-    if (selectedId&&streaming[selectedId]) finishStreaming(selectedId,streaming[selectedId]);
-    setTimeout(()=>{ if(!ws||ws.readyState!==WebSocket.OPEN) connectWS(url); }, 5000);
-  };
-
-  ws.onerror = () => {
-    wsStatus.textContent='✕ bridge error'; wsStatus.className='disconnected';
-    liveDot.style.background='var(--error)';
-  };
+// ═══════════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════════
+function setWsStatus(txt,cls,dot){
+  const s=document.getElementById('ws-status'); s.textContent=txt; s.className=cls;
+  const ld=document.getElementById('live-dot'); ld.className=dot?'on':'';
 }
 
-function handleWSMessage(msg) {
-  switch(msg.type) {
-    case 'init': {
-      const labels = { picoclaw:'🦐 PicoClaw', anthropic:'⚡ Anthropic', ollama:`🦙 ${msg.model||'Ollama'}`, none:'⚠ No provider' };
-      document.getElementById('mode-badge').textContent = labels[msg.provider]||msg.provider||'—';
+function connectWS(url){
+  setWsStatus('connecting…','wait',false);
+  try{ ws=new WebSocket(url); }catch(e){ setWsStatus('bad URL','err',false); return; }
+  ws.onopen=()=>{ setWsStatus('● bridge connected','ok',true); console.log('WS open'); };
+  ws.onmessage=e=>{ let m; try{m=JSON.parse(e.data);}catch{return;} onWS(m); };
+  ws.onclose=()=>{
+    setWsStatus('○ disconnected','err',false);
+    document.getElementById('sendbtn').disabled=false;
+    if(selectedId&&streamText[selectedId]) endStream(selectedId,streamText[selectedId]);
+    setTimeout(()=>{ if(!ws||ws.readyState!==WebSocket.OPEN) connectWS(url); },5000);
+  };
+  ws.onerror=()=>setWsStatus('✕ error','err',false);
+}
+
+function onWS(msg){
+  switch(msg.type){
+    case 'init':{
+      const L={picoclaw:'🦐 PicoClaw',anthropic:'⚡ Anthropic',ollama:`🦙 ${msg.model||'Ollama'}`,none:'⚠ No provider'};
+      document.getElementById('mode-badge').textContent=L[msg.provider]||msg.provider||'—';
       break;
     }
-    case 'status': {
+    case 'status':{
       const id=msg.agentId; if(!agentState[id]) agentState[id]={};
-      if(msg.status)   agentState[id].status=msg.status;
-      if(msg.task)     agentState[id].task=msg.task;
+      if(msg.status) agentState[id].status=msg.status;
+      if(msg.task)   agentState[id].task=msg.task;
       if(msg.progress!==undefined) agentState[id].progress=msg.progress;
       updateCard(id);
       if(id===selectedId&&msg.status==='thinking') showTyping(id);
-      if(id===selectedId&&msg.status==='working'&&!streaming[id]) { hideTyping(); startStreaming(id); }
+      if(id===selectedId&&msg.status==='working'&&!streamText[id]){hideTyping();startStream(id);}
       break;
     }
-    case 'token':        appendToken(msg.agentId, msg.token); break;
+    case 'token': appendTok(msg.agentId,msg.token); break;
     case 'message_done':
-      finishStreaming(msg.agentId, msg.content);
-      agentHistory[msg.agentId].push({role:'agent',content:msg.content,time:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})});
-      agentState[msg.agentId].status='idle'; agentState[msg.agentId].task='Awaiting task';
-      updateCard(msg.agentId);
+      endStream(msg.agentId,msg.content);
+      agentState[msg.agentId].status='idle'; agentState[msg.agentId].task='Awaiting task'; updateCard(msg.agentId);
       document.getElementById('sendbtn').disabled=false;
       break;
     case 'error':
-      hideTyping();
-      if(streaming[msg.agentId]) finishStreaming(msg.agentId,streaming[msg.agentId]);
-      pushMsg(msg.agentId,'agent',`[Error: ${msg.error}]`);
+      hideTyping(); endStream(msg.agentId,'');
+      addMsg(msg.agentId,'agent',`[Error: ${msg.error}]`);
       agentState[msg.agentId].status='idle'; updateCard(msg.agentId);
       document.getElementById('sendbtn').disabled=false;
       break;
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-//  BACKGROUND AUTONOMOUS ACTIVITY
-// ══════════════════════════════════════════════════════════════
-function startBackgroundShift() {
-  const pool=[  'working','thinking','testing','idle'];
-  const w   =[0.35,       0.25,      0.2,      0.2];
-  function pick(){let r=Math.random();for(let i=0;i<pool.length;i++){r-=w[i];if(r<=0)return pool[i];}return'idle';}
+// ═══════════════════════════════════════════════════
+// BACKGROUND
+// ═══════════════════════════════════════════════════
+function startBg(){
+  const pool=['working','thinking','testing','idle'],w=[.35,.25,.2,.2];
+  function pk(){let r=Math.random();for(let i=0;i<pool.length;i++){r-=w[i];if(r<=0)return pool[i];}return'idle';}
   setInterval(()=>{
     agents.forEach(ag=>{
-      if(ag.id===selectedId||Math.random()>0.3) return;
-      const status=pick();
-      const tasks=TASKS[ag.id]||['Working'];
-      agentState[ag.id]={ status, task:status==='idle'?'Awaiting task':tasks[Math.floor(Math.random()*tasks.length)], progress:status==='idle'?0:Math.floor(Math.random()*95)+5 };
+      if(ag.id===selectedId||Math.random()>.3) return;
+      const s=pk(),tasks=AUTO_TASKS[ag.id]||['Working'];
+      agentState[ag.id]={status:s,task:s==='idle'?'Awaiting task':tasks[Math.floor(Math.random()*tasks.length)],progress:s==='idle'?0:Math.floor(Math.random()*95)+5};
       updateCard(ag.id);
     });
   },3500);
 }
 
-// ══════════════════════════════════════════════════════════════
-//  CLOCK
-// ══════════════════════════════════════════════════════════════
-setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleTimeString(); },1000);
+setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString(),1000);
 
-// ══════════════════════════════════════════════════════════════
-//  SETUP OVERLAY — all handlers at the bottom, after all functions declared
-// ══════════════════════════════════════════════════════════════
-function showTab(tab) {
-  ['bridge','direct','ollama'].forEach(t=>{
-    document.getElementById('pane-'+t).style.display=t===tab?'block':'none';
-    document.getElementById('tab-'+t).classList.toggle('active',t===tab);
+// ═══════════════════════════════════════════════════
+// OVERLAY HANDLERS — last so everything above exists
+// ═══════════════════════════════════════════════════
+function showTab(t){
+  ['bridge','key','ollama'].forEach(n=>{
+    document.getElementById('pane-'+n).classList.toggle('on',n===t);
+    document.getElementById('tab-'+n).classList.toggle('on',n===t);
   });
 }
 
-// Logo click resets camera
-document.getElementById('logo-home').addEventListener('click',()=>{
+document.getElementById('logo-btn').addEventListener('click',()=>{
   camLocked=false; selectedId=null;
   agents.forEach(a=>document.getElementById(`card-${a.id}`)?.classList.remove('sel'));
 });
 
-// Bridge tab
-document.getElementById('connect-btn').addEventListener('click',()=>{
-  const url=(document.getElementById('ws-url').value.trim()||'ws://localhost:7070');
+document.getElementById('btn-bridge').addEventListener('click',()=>{
+  wsUrl=document.getElementById('ws-url').value.trim()||'ws://localhost:8080/ws';
+  mode='bridge';
   document.getElementById('overlay').classList.add('gone');
-  initAgents(DEFAULT_AGENTS);
   document.getElementById('mode-badge').textContent='⟳ connecting…';
-  connectWS(url);
+  launch(DEFAULT_AGENTS);
+  connectWS(wsUrl);
 });
 
-// Anthropic direct tab
-document.getElementById('direct-btn').addEventListener('click',()=>{
-  const key=document.getElementById('apikey-input').value.trim();
-  if(!key){ document.getElementById('apikey-input').focus(); document.getElementById('apikey-input').style.borderColor='var(--error)'; return; }
-  apiKey=key; directMode=true;
+document.getElementById('btn-key').addEventListener('click',()=>{
+  const k=document.getElementById('inp-key').value.trim();
+  if(!k){document.getElementById('inp-key').classList.add('err');document.getElementById('inp-key').focus();return;}
+  apiKey=k; mode='anthropic';
   document.getElementById('overlay').classList.add('gone');
   document.getElementById('mode-badge').textContent='⚡ Anthropic';
-  document.getElementById('ws-status').textContent='○ no bridge';
-  document.getElementById('ws-status').className='disconnected';
-  initAgents(DEFAULT_AGENTS);
+  setWsStatus('no bridge','err',false);
+  launch(DEFAULT_AGENTS);
 });
 
-// Ollama check button
-document.getElementById('ollama-check-btn').addEventListener('click',async()=>{
-  const base=document.getElementById('ollama-url-input').value.trim()||'http://localhost:11434';
-  const stat=document.getElementById('ollama-status');
-  stat.textContent='Checking…'; stat.style.color='var(--muted2)';
-  try {
+document.getElementById('btn-ollama-check').addEventListener('click',async()=>{
+  const base=document.getElementById('inp-ollama-url').value.trim()||'http://localhost:11434';
+  const res=document.getElementById('ollama-check-result');
+  res.textContent='Checking…'; res.style.color='var(--muted2)';
+  try{
     const r=await fetch(`${base}/api/tags`,{signal:AbortSignal.timeout(4000)});
     if(!r.ok) throw new Error('HTTP '+r.status);
-    const j=await r.json();
-    const models=(j.models||[]).map(m=>m.name);
-    if(!models.length){
-      stat.textContent='⚠ Ollama running but no models — run: ollama pull llama3';
-      stat.style.color='var(--thinking)';
-    } else {
-      stat.textContent='✓ Connected — models: '+models.join(', ');
-      stat.style.color='var(--done)';
-      ollamaBase=base;
-      const inp=document.getElementById('ollama-model-input');
-      if(!inp.value){
-        const pref=['llama3','llama3.2','llama3.1','mistral','gemma2','phi3'];
-        const pick=pref.find(p=>models.some(m=>m.startsWith(p)))||models[0];
-        inp.value=models.find(m=>m.startsWith(pick.split(':')[0]))||pick;
-      }
+    const j=await r.json(); const models=(j.models||[]).map(m=>m.name);
+    if(!models.length){res.textContent='⚠ No models — run: ollama pull llama3';res.style.color='var(--thinking)';}
+    else{
+      res.textContent='✓ Models: '+models.join(', ');res.style.color='var(--done)';
+      const mi=document.getElementById('inp-ollama-model');
+      if(!mi.value){const pref=['llama3','llama3.2','mistral','gemma2','phi3'];const p=pref.find(x=>models.some(m=>m.startsWith(x)))||models[0];mi.value=models.find(m=>m.startsWith(p.split(':')[0]))||p;}
     }
-  } catch(e){
-    stat.textContent='✗ Cannot reach Ollama: '+e.message;
-    stat.style.color='var(--error)';
-  }
+  }catch(e){res.textContent='✗ '+e.message;res.style.color='var(--error)';}
 });
 
-// Ollama launch tab
-document.getElementById('ollama-btn').addEventListener('click',()=>{
-  ollamaBase =document.getElementById('ollama-url-input').value.trim()||'http://localhost:11434';
-  ollamaModel=document.getElementById('ollama-model-input').value.trim()||'llama3';
-  ollamaMode=true; directMode=true;
+document.getElementById('btn-ollama').addEventListener('click',()=>{
+  ollamaBase=document.getElementById('inp-ollama-url').value.trim()||'http://localhost:11434';
+  ollamaModel=document.getElementById('inp-ollama-model').value.trim()||'llama3';
+  mode='ollama';
   document.getElementById('overlay').classList.add('gone');
   document.getElementById('mode-badge').textContent=`🦙 ${ollamaModel}`;
-  document.getElementById('ws-status').textContent='○ no bridge';
-  document.getElementById('ws-status').className='disconnected';
-  initAgents(DEFAULT_AGENTS);
+  setWsStatus('no bridge','err',false);
+  launch(DEFAULT_AGENTS);
 });
 </script>
 </body>
